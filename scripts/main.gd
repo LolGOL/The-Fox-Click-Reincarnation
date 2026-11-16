@@ -275,7 +275,7 @@ func _build_ui() -> void:
 	hdr.add_child(hdr_hbox)
 
 	var title := Label.new()
-	title.text = "[FOX_OS // 146] THE FOX REINCARNATION"
+	title.text = "[FOX_OS // 146] THE FOX CLICK REINCARNATION"
 	title.add_theme_color_override("font_color", Color("#ff1e38"))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hdr_hbox.add_child(title)
