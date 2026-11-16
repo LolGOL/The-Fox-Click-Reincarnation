@@ -1,0 +1,107 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/boot_splash.gd" id="1_boot"]
+
+[node name="BootSplash" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_boot")
+
+[node name="Bg" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.0196078, 0, 0, 1)
+
+[node name="LogoStage" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LogoCanvas" type="Control" parent="LogoStage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StudioLabel" type="Label" parent="LogoStage"]
+unique_name_in_owner = true
+layout_mode = 0
+text = "FOX_OS STUDIO"
+
+[node name="WarnStage" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="IconCanvas" type="Control" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ControlsText" type="Label" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 0
+text = "Вы можете нажимать левой кнопкой, правой кнопкой или клавишей Пробел."
+
+[node name="EscText" type="Label" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 0
+text = "При дискомфорте в настройках доступен режим снижения шума."
+
+[node name="WarnTitle" type="Label" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 0
+text = "ПРЕДУПРЕЖДЕНИЕ О СВЕТОЧУВСТВИТЕЛЬНОСТИ:"
+
+[node name="WarnBody" type="Label" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 0
+text = "Эта игра содержит вспышки, глитчи и мерцание, которые могут повлиять на людей со светочувствительной эпилепсией."
+
+[node name="SkipHint" type="Label" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 0
+text = "Удерживайте любую кнопку, чтобы пропустить"
+
+[node name="HoldBar" type="ProgressBar" parent="WarnStage"]
+unique_name_in_owner = true
+layout_mode = 0
+
+[node name="Fade" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)

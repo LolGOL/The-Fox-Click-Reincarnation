@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
+[ext_resource type="Script" path="res://scripts/menu_fox.gd" id="2_fox"]
+[ext_resource type="Script" path="res://scripts/settings_panel.gd" id="3_set"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -21,76 +23,116 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0.0196078, 0, 0, 1)
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="Visual" type="Control" parent="."]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
+anchor_left = 0.38
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
-[node name="Content" type="VBoxContainer" parent="Center"]
-layout_mode = 2
-theme_override_constants/separation = 30
+[node name="SealHolder" type="Control" parent="Visual"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 0
+offset_right = 216.0
+offset_bottom = 216.0
+mouse_filter = 2
 
-[node name="TagLabel" type="Label" parent="Center/Content"]
+[node name="MenuFox" type="Control" parent="Visual"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 0
+offset_right = 340.0
+offset_bottom = 370.0
+script = ExtResource("2_fox")
+
+[node name="Left" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 70.0
+offset_top = 70.0
+offset_right = 490.0
+offset_bottom = -70.0
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="TagLabel" type="Label" parent="Left"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "FOX OS // /SYS/146"
-horizontal_alignment = 1
 
-[node name="TitleLabel" type="Label" parent="Center/Content"]
+[node name="TitleLabel" type="Label" parent="Left"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "THE FOX CLICK REINCARNATION"
-horizontal_alignment = 1
+text = "THE FOX CLICK
+REINCARNATION"
 
-[node name="StartButton" type="Button" parent="Center/Content"]
+[node name="VoiceLabel" type="Label" parent="Left"]
 unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 4
-text = "[ НАЖМИ, ЧТОБЫ ВОЙТИ ]"
-
-[node name="VoiceLabel" type="Label" parent="Center/Content"]
-unique_name_in_owner = true
+custom_minimum_size = Vector2(380, 0)
 layout_mode = 2
 text = "> Fox OS: Я ждал тебя. Нажми."
-horizontal_alignment = 1
 
-[node name="BottomBar" type="HBoxContainer" parent="."]
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -52.0
-offset_bottom = -14.0
-grow_horizontal = 2
-grow_vertical = 0
-theme_override_constants/separation = 40
-alignment = 1
+[node name="Spacer" type="Control" parent="Left"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
 
-[node name="ArchiveButton" type="Button" parent="BottomBar"]
+[node name="Buttons" type="VBoxContainer" parent="Left"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ContinueButton" type="Button" parent="Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "[ АРХИВ /SYS/146 ]"
+text = "[ ПРОДОЛЖИТЬ ]"
 
-[node name="SoundButton" type="Button" parent="BottomBar"]
+[node name="NewGameButton" type="Button" parent="Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "[ ЗВУК: ВКЛ ]"
+text = "[ НОВАЯ ИГРА ]"
 
-[node name="NoiseButton" type="Button" parent="BottomBar"]
+[node name="AchievementsButton" type="Button" parent="Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "[ СНИЗИТЬ ШУМ ]"
+text = "[ ДОСТИЖЕНИЯ ]"
 
-[node name="QuitButton" type="Button" parent="BottomBar"]
+[node name="SettingsButton" type="Button" parent="Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ НАСТРОЙКИ ]"
+
+[node name="CreditsButton" type="Button" parent="Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ АВТОРЫ ]"
+
+[node name="QuitButton" type="Button" parent="Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
 text = "[ ВЫХОД ]"
 
-[node name="ArchiveShade" type="ColorRect" parent="."]
+[node name="VersionLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -420.0
+offset_top = 24.0
+offset_right = -30.0
+offset_bottom = 64.0
+grow_horizontal = 0
+text = "Все права защищены © FOX_OS STUDIO 2026
+The Fox Click Reincarnation"
+horizontal_alignment = 2
+
+[node name="Shade" type="ColorRect" parent="."]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -100,6 +142,23 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.78)
+
+[node name="SettingsPanel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -320.0
+offset_top = -210.0
+offset_right = 320.0
+offset_bottom = 210.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_set")
 
 [node name="ArchivePanel" type="PanelContainer" parent="."]
 unique_name_in_owner = true
@@ -129,7 +188,7 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "/SYS/146 // АРХИВ"
+text = "/SYS/146 // ДОСТИЖЕНИЯ"
 
 [node name="CloseButton" type="Button" parent="ArchivePanel/ArchiveVBox/Header"]
 unique_name_in_owner = true
@@ -152,6 +211,86 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "> Выбери файл."
 autowrap_mode = 3
+
+[node name="ConfirmPanel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -90.0
+offset_right = 250.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ConfirmVBox" type="VBoxContainer" parent="ConfirmPanel"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="ConfirmLabel" type="Label" parent="ConfirmPanel/ConfirmVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ПЕРЕЗАПИСАТЬ СОХРАНЕНИЕ?"
+
+[node name="ConfirmButtons" type="HBoxContainer" parent="ConfirmPanel/ConfirmVBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="YesButton" type="Button" parent="ConfirmPanel/ConfirmVBox/ConfirmButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 44)
+layout_mode = 2
+text = "[ ДА ]"
+
+[node name="NoButton" type="Button" parent="ConfirmPanel/ConfirmVBox/ConfirmButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 44)
+layout_mode = 2
+text = "[ НЕТ ]"
+
+[node name="InfoPanel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -150.0
+offset_right = 260.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="InfoVBox" type="VBoxContainer" parent="InfoPanel"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="InfoLabel" type="Label" parent="InfoPanel/InfoVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "THE FOX CLICK REINCARNATION
+
+Дизайн и код: FOX_OS STUDIO
+Движок: Godot 4
+Вдохновлено: Click the Button
+
+> Fox OS: Спасибо, что кликаешь."
+horizontal_alignment = 1
+
+[node name="InfoCloseButton" type="Button" parent="InfoPanel/InfoVBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "[ ЗАКРЫТЬ ]"
 
 [node name="CrtOverlay" type="ColorRect" parent="."]
 unique_name_in_owner = true
