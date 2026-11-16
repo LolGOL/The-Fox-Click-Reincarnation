@@ -79,7 +79,8 @@ static func perk_mult(s: Node) -> float:
 
 static func global_mult(s: Node) -> float:
 	var sync: float = GameData.SYNC_MULT if bool(s.cu.get("sync", false)) else 1.0
-	return inf_mult(s) * shard_mult(s) * sync * perk_mult(s)
+	var mut_bld: float = Mutations.building_mult() if Engine.has_singleton("Mutations") or s.get_node_or_null("/root/Mutations") else 1.0
+	return inf_mult(s) * shard_mult(s) * sync * perk_mult(s) * mut_bld
 
 static func base_cps(s: Node) -> BigNum:
 	var total: BigNum = BigNum.zero()

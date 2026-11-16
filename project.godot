@@ -18,6 +18,13 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameState="*uid://cnujm0fmj4o0e"
+Audio="*uid://ckiurpkgecuca"
+Casino="*uid://dwt4k27phgihj"
+Ghost="*uid://dhfndgpgq7k03"
+Achievements="*uid://cxfi6l5chfbgy"
+Mutations="*uid://b31qhtdpv4hkk"
+Fox="*uid://ekv8a4xpjt1g"
+WorldWatch="*uid://dqdkwoltyagm1"
 
 [display]
 

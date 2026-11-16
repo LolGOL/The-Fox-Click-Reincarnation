@@ -35,6 +35,7 @@ func _gui_input(event: InputEvent) -> void:
 		elif pressed_down:
 			pressed_down = false
 			pinned = not pinned
+			Audio.play_sfx("ui")
 			toggled.emit(pinned)
 			queue_redraw()
 

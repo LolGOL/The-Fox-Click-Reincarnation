@@ -7,11 +7,10 @@ const SIGIL_TITLES: Array[String] = [
 	"SIGIL LV.4 // ЦИФРОВОЙ РАЗЛОМ"
 ]
 
-const DRAWER_PANEL_W := 450.0
+const DRAWER_PANEL_W := 440.0
 const HANDLE_W := 38.0
 const TOTAL_DRAWER_W := DRAWER_PANEL_W + HANDLE_W
 
-# Кэшированные стили интерфейса (без дублей в памяти)
 var sb_btn_normal: StyleBoxFlat
 var sb_btn_hover: StyleBoxFlat
 var sb_btn_pressed: StyleBoxFlat
@@ -25,6 +24,7 @@ var ui_root: VBoxContainer
 var vfx: VfxLayer
 var crt_mat: ShaderMaterial
 var sigil_btn: CoreSigilButton
+var fox_pet: FoxPetActor
 
 var left_drawer: HBoxContainer
 var right_drawer: HBoxContainer
@@ -38,6 +38,7 @@ var right_grace: float = 0.0
 var coins_lbl: Label
 var cps_lbl: Label
 var phase_lbl: Label
+var ghost_lbl: Label
 var voice_lbl: Label
 var sigil_lbl: Label
 var combo_lbl: Label
@@ -47,6 +48,9 @@ var myc_lbl: Label
 var myc_bar: ProgressBar
 var spore_btn: Button
 var purify_btn: Button
+var casino_btn: Button
+var sound_btn: Button
+var mute_fox_btn: Button
 
 var shop_list: VBoxContainer
 var shop_rows: Array[Dictionary] = []
@@ -57,6 +61,7 @@ var ups_box: VBoxContainer
 var amt_btns: Dictionary = {}
 var last_up_sig: String = ""
 
+# Модальные окна
 var deal_overlay: ColorRect
 var deal_name_lbl: Label
 var deal_rew_lbl: Label
@@ -64,6 +69,19 @@ var deal_cur_lbl: Label
 var deal_bar: ProgressBar
 var current_deal: Dictionary = {}
 var deal_left: float = 0.0
+
+var casino_overlay: ColorRect
+var casino_status_lbl: Label
+var casino_spores_lbl: Label
+var casino_catch_btn: Button
+var casino_bet: int = 1
+
+var mut_overlay: ColorRect
+var mut_cards_box: VBoxContainer
+
+var logs_overlay: ColorRect
+var logs_list_box: VBoxContainer
+var logs_lore_lbl: Label
 
 var debug_overlay: ColorRect
 
@@ -91,6 +109,43 @@ func _ready() -> void:
 		if shake:
 			shake_time = 0.32
 	)
+	GameState.stall_detected.connect(func() -> void:
+		Casino.offer_via_fox()
+	)
+
+	Ghost.delta_ready.connect(func(d_sec: float) -> void:
+		ghost_lbl.text = "GHOST: " + Ghost.fmt(d_sec)
+		ghost_lbl.add_theme_color_override("font_color", Color("#39ff88") if d_sec < 0.0 else Color("#ff5266"))
+	)
+	Ghost.ghost_beaten.connect(func(bonus: int) -> void:
+		vfx.spawn_purchase_burst(Vector2(800, 120), "ПРИЗРАК ОБОГНАН! +%d ОСК." % bonus, true)
+	)
+
+	Mutations.choices_offered.connect(_open_mutations_modal)
+	Achievements.unlocked_new.connect(func(_id: int, path: String, _lore: String) -> void:
+		voice_lbl.text = "> Fox OS: Файл расшифрован -> " + path
+		vfx.spawn_floating_text(Vector2(800, 90), "UNLOCK: " + path, Color("#00e5ff"), 1.05)
+	)
+
+	Casino.spin_started.connect(func(bet: int) -> void:
+		casino_status_lbl.text = "БАРАБАН КРУТИТСЯ... (Ставка: %d спор)\nСледи за правым ухом Лиса!" % bet
+		casino_catch_btn.visible = false
+	)
+	Casino.ear_twitch.connect(func() -> void:
+		if casino_overlay.visible:
+			casino_catch_btn.visible = true
+	)
+	Casino.spin_resolved.connect(func(res: Dictionary) -> void:
+		casino_catch_btn.visible = false
+		if bool(res.get("busted", false)):
+			casino_status_lbl.text = "ШУЛЕР ПОЙМАН ЗА УХО! Выигрыш: +%d спор (×2)" % int(res["win"])
+			vfx.spawn_purchase_burst(Vector2(800, 420), "ЛИС ПОЙМАН! +%d СПОР" % int(res["win"]), true)
+		elif int(res["win"]) > 0:
+			casino_status_lbl.text = "ПОБЕДА ×%.0f! Выигрыш: +%d спор" % [float(res["mult"]), int(res["win"])]
+			vfx.spawn_purchase_burst(Vector2(800, 420), "+%d СПОР" % int(res["win"]))
+		else:
+			casino_status_lbl.text = "ПРОИГРЫШ... Лис усмехается и прячет твои %d спор." % int(res["bet"])
+	)
 
 	var tick_timer := Timer.new()
 	tick_timer.wait_time = 0.1
@@ -111,9 +166,10 @@ func _input(event: InputEvent) -> void:
 		if event.keycode == KEY_F12:
 			debug_overlay.visible = not debug_overlay.visible
 			get_viewport().set_input_as_handled()
-		elif event.keycode == KEY_ESCAPE and debug_overlay.visible:
+		elif event.keycode == KEY_ESCAPE:
 			debug_overlay.visible = false
-			get_viewport().set_input_as_handled()
+			casino_overlay.visible = false
+			logs_overlay.visible = false
 
 func _process(delta: float) -> void:
 	var now: float = Time.get_unix_time_from_system()
@@ -130,13 +186,13 @@ func _process(delta: float) -> void:
 	else:
 		ui_root.position = Vector2.ZERO
 
-	# Эффекты мицелия: 20%+ дрожь кнопок, 40%+ мерцание цифр, 80%+ ловушки
 	var inf: int = Economy.inf_eff(GameState)
+	var jitter_active := inf >= 20 or Mutations.has_glitch("ui_jitter")
 	for r: Dictionary in shop_rows:
 		var btn: Button = r["btn"]
 		if btn.has_meta("dodging"):
 			continue
-		if inf >= 20:
+		if jitter_active:
 			var jit := randf_range(-1.8, 1.8)
 			btn.offset_left = jit
 			btn.offset_right = jit
@@ -144,8 +200,7 @@ func _process(delta: float) -> void:
 			btn.offset_left = 0.0
 			btn.offset_right = 0.0
 
-	coins_lbl.modulate.a = (0.78 + 0.22 * sin(now * 16.0)) if inf >= 40 else 1.0
-
+	coins_lbl.modulate.a = (0.76 + 0.24 * sin(now * 16.0)) if (inf >= 40 or Mutations.has_glitch("echo")) else 1.0
 	_tick_fake_button(delta, inf)
 
 	if deal_overlay.visible:
@@ -158,13 +213,15 @@ func _process(delta: float) -> void:
 	flash_red_val = maxf(0.0, flash_red_val - delta * 1.4)
 	if crt_mat:
 		var inf_f := float(inf) / 100.0
-		crt_mat.set_shader_parameter("aberration", 0.0008 + inf_f * 0.0045)
-		crt_mat.set_shader_parameter("tear_strength", 0.025 if inf >= 80 else (0.01 if inf >= 60 else 0.0))
+		var aber := 0.0008 + inf_f * 0.004 + (0.003 if Mutations.has_glitch("chroma") else 0.0)
+		var tear := 0.025 if (inf >= 80 or Mutations.has_glitch("tear")) else (0.01 if inf >= 60 else 0.0)
+		crt_mat.set_shader_parameter("aberration", aber)
+		crt_mat.set_shader_parameter("tear_strength", tear)
 		crt_mat.set_shader_parameter("bw_mode", 1.0 if float(GameState.fx.get("over", 0.0)) > 0.0 else 0.0)
 		crt_mat.set_shader_parameter("flash_red", flash_red_val)
 
 func _update_drawers(delta: float) -> void:
-	var modal_busy := deal_overlay.visible or debug_overlay.visible
+	var modal_busy := deal_overlay.visible or debug_overlay.visible or casino_overlay.visible or mut_overlay.visible or logs_overlay.visible
 	var mpos := get_global_mouse_position()
 
 	var l_hover := not modal_busy and left_drawer.get_global_rect().has_point(mpos)
@@ -179,27 +236,21 @@ func _update_drawers(delta: float) -> void:
 	right_drawer.offset_right = lerpf(DRAWER_PANEL_W, 0.0, right_open_t)
 	right_drawer.offset_left = right_drawer.offset_right - TOTAL_DRAWER_W
 
-func _make_box_style(bg: Color, border: Color, border_w: int = 2, pad_x: int = 10, pad_y: int = 8) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = border
-	sb.set_border_width_all(border_w)
-	sb.content_margin_left = pad_x
-	sb.content_margin_right = pad_x
-	sb.content_margin_top = pad_y
-	sb.content_margin_bottom = pad_y
-	return sb
-
 func _init_shared_styles() -> void:
-	sb_btn_normal = _make_box_style(Color("#190609"), Color("#c0392b"))
-	sb_btn_hover = _make_box_style(Color("#2d0a11"), Color("#ff1e38"))
-	sb_btn_pressed = _make_box_style(Color("#c0392b"), Color("#ff1e38"))
-	sb_btn_disabled = _make_box_style(Color("#0d0305"), Color("#3a0b10"))
-	sb_btn_active = _make_box_style(Color("#c0392b"), Color("#ff5266"))
-	sb_btn_acid = _make_box_style(Color("#161c04"), Color("#d6ff3a"))
+	sb_btn_normal = FoxTheme.panel_style(Color("#c0392b"), Color("#190609"), 2)
+	sb_btn_hover = FoxTheme.panel_style(Color("#ff1e38"), Color("#2d0a11"), 2)
+	sb_btn_pressed = FoxTheme.panel_style(Color("#ff1e38"), Color("#c0392b"), 2)
+	sb_btn_disabled = FoxTheme.panel_style(Color("#3a0b10"), Color("#0d0305"), 2)
+	sb_btn_active = FoxTheme.panel_style(Color("#ff5266"), Color("#c0392b"), 2)
+	sb_btn_acid = FoxTheme.panel_style(Color("#d6ff3a"), Color("#161c04"), 2)
 
-	sb_bar_bg = _make_box_style(Color("#050102"), Color("#4a0e16"), 2, 0, 0)
-	sb_bar_fill = _make_box_style(Color("#c0392b"), Color("#ff1e38"), 0, 0, 0)
+	sb_bar_bg = StyleBoxFlat.new()
+	sb_bar_bg.bg_color = Color("#050102")
+	sb_bar_bg.border_color = Color("#4a0e16")
+	sb_bar_bg.set_border_width_all(2)
+
+	sb_bar_fill = StyleBoxFlat.new()
+	sb_bar_fill.bg_color = Color("#c0392b")
 
 func _style_button(btn: Button, is_acid: bool = false) -> void:
 	btn.add_theme_stylebox_override("normal", sb_btn_acid if is_acid else sb_btn_normal)
@@ -218,24 +269,25 @@ func _style_progress_bar(bar: ProgressBar) -> void:
 func _build_drawer_handle(vertical_title: String, is_left: bool) -> PanelContainer:
 	var handle := PanelContainer.new()
 	handle.custom_minimum_size = Vector2(HANDLE_W, 0)
-	handle.add_theme_stylebox_override("panel", _make_box_style(Color("#120306"), Color("#c0392b"), 2, 4, 8))
+	var hs := FoxTheme.panel_style(Color("#c0392b"), Color("#120306"), 2)
+	hs.content_margin_left = 4
+	hs.content_margin_right = 4
+	handle.add_theme_stylebox_override("panel", hs)
 
 	var vb := VBoxContainer.new()
-	vb.alignment = BoxContainer.ALIGNMENT_BEGIN
 	vb.add_theme_constant_override("separation", 10)
 	handle.add_child(vb)
 
 	var pin_btn := DrawerPinButton.new()
 	vb.add_child(pin_btn)
-
 	if is_left:
-		pin_btn.toggled.connect(func(is_pinned: bool) -> void: left_pinned = is_pinned)
+		pin_btn.toggled.connect(func(p: bool) -> void: left_pinned = p)
 	else:
-		pin_btn.toggled.connect(func(is_pinned: bool) -> void: right_pinned = is_pinned)
+		pin_btn.toggled.connect(func(p: bool) -> void: right_pinned = p)
 
-	var spacer_top := Control.new()
-	spacer_top.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vb.add_child(spacer_top)
+	var sp1 := Control.new()
+	sp1.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(sp1)
 
 	var tag := Label.new()
 	tag.text = vertical_title
@@ -244,10 +296,9 @@ func _build_drawer_handle(vertical_title: String, is_left: bool) -> PanelContain
 	tag.add_theme_font_size_override("font_size", 13)
 	vb.add_child(tag)
 
-	var spacer_bot := Control.new()
-	spacer_bot.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vb.add_child(spacer_bot)
-
+	var sp2 := Control.new()
+	sp2.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(sp2)
 	return handle
 
 func _build_ui() -> void:
@@ -267,11 +318,11 @@ func _build_ui() -> void:
 
 	# Шапка
 	var hdr := PanelContainer.new()
-	hdr.add_theme_stylebox_override("panel", _make_box_style(Color("#0c0204"), Color("#c0392b")))
+	hdr.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#c0392b"), Color("#0c0204"), 2))
 	ui_root.add_child(hdr)
 
 	var hdr_hbox := HBoxContainer.new()
-	hdr_hbox.add_theme_constant_override("separation", 12)
+	hdr_hbox.add_theme_constant_override("separation", 8)
 	hdr.add_child(hdr_hbox)
 
 	var title := Label.new()
@@ -279,6 +330,44 @@ func _build_ui() -> void:
 	title.add_theme_color_override("font_color", Color("#ff1e38"))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hdr_hbox.add_child(title)
+
+	ghost_lbl = Label.new()
+	ghost_lbl.text = "GHOST: --:--"
+	ghost_lbl.add_theme_color_override("font_color", Color("#926870"))
+	hdr_hbox.add_child(ghost_lbl)
+
+	casino_btn = Button.new()
+	casino_btn.text = "[CASINO.EXE // СПОРЫ: 3]"
+	_style_button(casino_btn)
+	casino_btn.pressed.connect(func() -> void:
+		casino_overlay.visible = true
+		_refresh_casino_ui()
+	)
+	hdr_hbox.add_child(casino_btn)
+
+	var logs_btn := Button.new()
+	logs_btn.text = "[/SYS/146]"
+	_style_button(logs_btn)
+	logs_btn.pressed.connect(_open_logs_modal)
+	hdr_hbox.add_child(logs_btn)
+
+	sound_btn = Button.new()
+	sound_btn.text = "[ЗВУК: ВКЛ]"
+	_style_button(sound_btn)
+	sound_btn.pressed.connect(func() -> void:
+		Audio.set_sound(not Audio.sound_on)
+		sound_btn.text = "[ЗВУК: ВКЛ]" if Audio.sound_on else "[ЗВУК: ВЫКЛ]"
+	)
+	hdr_hbox.add_child(sound_btn)
+
+	mute_fox_btn = Button.new()
+	mute_fox_btn.text = "[ЛИС: ГОВОРИТ]"
+	_style_button(mute_fox_btn)
+	mute_fox_btn.pressed.connect(func() -> void:
+		Fox.set_muted(not Fox.muted)
+		mute_fox_btn.text = "[ЛИС: МОЛЧИТ]" if Fox.muted else "[ЛИС: ГОВОРИТ]"
+	)
+	hdr_hbox.add_child(mute_fox_btn)
 
 	var dbg_btn := Button.new()
 	dbg_btn.text = "[DEBUG // F12]"
@@ -292,7 +381,7 @@ func _build_ui() -> void:
 
 	# Строка голоса Fox OS
 	var voice_panel := PanelContainer.new()
-	voice_panel.add_theme_stylebox_override("panel", _make_box_style(Color("#090204"), Color("#4a0e16")))
+	voice_panel.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#4a0e16"), Color("#090204"), 2))
 	ui_root.add_child(voice_panel)
 
 	voice_lbl = Label.new()
@@ -300,22 +389,22 @@ func _build_ui() -> void:
 	voice_lbl.add_theme_color_override("font_color", Color("#ff1e38"))
 	voice_panel.add_child(voice_lbl)
 
-	# Рабочая зона: центральная сцена + выдвижные боковые шторки
+	# Рабочая зона
 	var workspace := Control.new()
 	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	workspace.clip_contents = true
 	ui_root.add_child(workspace)
 
-	# === ЦЕНТРАЛЬНАЯ АРЕНА ===
+	# Центральная арена
 	var center_panel := PanelContainer.new()
 	center_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center_panel.offset_left = HANDLE_W + 6.0
 	center_panel.offset_right = -(HANDLE_W + 6.0)
-	center_panel.add_theme_stylebox_override("panel", _make_box_style(Color(0.045, 0.012, 0.02, 0.88), Color("#c0392b")))
+	center_panel.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#c0392b"), Color(0.045, 0.012, 0.02, 0.88), 2))
 	workspace.add_child(center_panel)
 
 	var center_vbox := VBoxContainer.new()
-	center_vbox.add_theme_constant_override("separation", 10)
+	center_vbox.add_theme_constant_override("separation", 8)
 	center_panel.add_child(center_vbox)
 
 	var top_bar := HBoxContainer.new()
@@ -390,7 +479,7 @@ func _build_ui() -> void:
 	_style_button(spore_btn)
 	spore_btn.pressed.connect(func() -> void:
 		if GameState.buy_spore():
-			vfx.spawn_purchase_burst(get_global_mouse_position(), "СПОРЫ ВПРЫСНУТЫ!", true)
+			vfx.spawn_purchase_burst(get_global_mouse_position(), "СПОРЫ ВПРЫСНУТЫ! (+2 СПОРЫ)", true)
 	)
 	myc_btns.add_child(spore_btn)
 
@@ -399,6 +488,11 @@ func _build_ui() -> void:
 	_style_button(purify_btn)
 	purify_btn.pressed.connect(GameState.purify)
 	myc_btns.add_child(purify_btn)
+
+	# Отступ снизу под прогулки геометрического Лиса
+	var fox_spacer := Control.new()
+	fox_spacer.custom_minimum_size = Vector2(0, 74)
+	center_vbox.add_child(fox_spacer)
 
 	# === ЛЕВАЯ ВЫДВИЖНАЯ ШТОРКА: МАГАЗИН ===
 	left_drawer = HBoxContainer.new()
@@ -413,7 +507,7 @@ func _build_ui() -> void:
 
 	var left_panel := PanelContainer.new()
 	left_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left_panel.add_theme_stylebox_override("panel", _make_box_style(Color(0.035, 0.012, 0.02, 0.97), Color("#ff1e38")))
+	left_panel.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color(0.035, 0.012, 0.02, 0.97), 2))
 	left_drawer.add_child(left_panel)
 
 	var left_vbox := VBoxContainer.new()
@@ -439,6 +533,7 @@ func _build_ui() -> void:
 
 	var shop_scroll := ScrollContainer.new()
 	shop_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	FoxTheme.apply_scrollbar(shop_scroll.get_v_scroll_bar())
 	left_vbox.add_child(shop_scroll)
 
 	shop_list = VBoxContainer.new()
@@ -489,7 +584,7 @@ func _build_ui() -> void:
 
 	var right_panel := PanelContainer.new()
 	right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_panel.add_theme_stylebox_override("panel", _make_box_style(Color(0.035, 0.012, 0.02, 0.97), Color("#ff1e38")))
+	right_panel.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color(0.035, 0.012, 0.02, 0.97), 2))
 	right_drawer.add_child(right_panel)
 
 	var right_vbox := VBoxContainer.new()
@@ -502,6 +597,7 @@ func _build_ui() -> void:
 
 	var up_scroll := ScrollContainer.new()
 	up_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	FoxTheme.apply_scrollbar(up_scroll.get_v_scroll_bar())
 	right_vbox.add_child(up_scroll)
 
 	ups_box = VBoxContainer.new()
@@ -518,6 +614,14 @@ func _build_ui() -> void:
 func _build_shader_and_vfx() -> void:
 	vfx = VfxLayer.new()
 	add_child(vfx)
+
+	# Слой бегающего геометрического Лиса (поверх интерфейса, ниже пост-шейдера)
+	var pet_layer := CanvasLayer.new()
+	pet_layer.layer = 7
+	add_child(pet_layer)
+
+	fox_pet = FoxPetActor.new()
+	pet_layer.add_child(fox_pet)
 
 	var shader_layer := CanvasLayer.new()
 	shader_layer.layer = 10
@@ -549,7 +653,7 @@ func _build_modals() -> void:
 
 	var box := PanelContainer.new()
 	box.custom_minimum_size = Vector2(540, 0)
-	box.add_theme_stylebox_override("panel", _make_box_style(Color.BLACK, Color("#ff1e38"), 4))
+	box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color.BLACK, 4))
 	cc.add_child(box)
 
 	var vb := VBoxContainer.new()
@@ -606,7 +710,162 @@ func _build_modals() -> void:
 	)
 	btns.add_child(no_btn)
 
-	# 2. DEBUG-меню
+	# 2. Окно Casino.exe (с защитой от F5 и охотой на ухо Лиса)
+	casino_overlay = ColorRect.new()
+	casino_overlay.color = Color(0.0, 0.0, 0.0, 0.78)
+	casino_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	casino_overlay.visible = false
+	modal_layer.add_child(casino_overlay)
+
+	var cas_cc := CenterContainer.new()
+	cas_cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	casino_overlay.add_child(cas_cc)
+
+	var cas_box := PanelContainer.new()
+	cas_box.custom_minimum_size = Vector2(540, 0)
+	cas_box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color("#0a0103"), 3))
+	cas_cc.add_child(cas_box)
+
+	var cas_vb := VBoxContainer.new()
+	cas_vb.add_theme_constant_override("separation", 10)
+	cas_box.add_child(cas_vb)
+
+	var cas_hdr := HBoxContainer.new()
+	cas_vb.add_child(cas_hdr)
+	var cas_t := Label.new()
+	cas_t.text = "[CASINO.EXE] РУЛЕТКА СПОР // ШУЛЕРСТВО ЛИСА"
+	cas_t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cas_t.add_theme_color_override("font_color", Color("#ff1e38"))
+	cas_hdr.add_child(cas_t)
+
+	var cas_close := Button.new()
+	cas_close.text = "ЗАКРЫТЬ"
+	_style_button(cas_close)
+	cas_close.pressed.connect(func() -> void: casino_overlay.visible = false)
+	cas_hdr.add_child(cas_close)
+
+	casino_spores_lbl = Label.new()
+	casino_spores_lbl.add_theme_color_override("font_color", Color("#39ff88"))
+	cas_vb.add_child(casino_spores_lbl)
+
+	casino_status_lbl = Label.new()
+	casino_status_lbl.text = "Выбери ставку. Если Лис решит слить тебя — его ухо дёрнется за 0.4 сек до конца!"
+	casino_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cas_vb.add_child(casino_status_lbl)
+
+	var bet_row := HBoxContainer.new()
+	bet_row.add_theme_constant_override("separation", 8)
+	cas_vb.add_child(bet_row)
+	for b_val: int in [1, 5, 10, 25]:
+		var bb := Button.new()
+		bb.text = "Ставка: %d" % b_val
+		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_style_button(bb)
+		bb.pressed.connect(func() -> void:
+			casino_bet = b_val
+			_refresh_casino_ui()
+		)
+		bet_row.add_child(bb)
+
+	var spin_btn := Button.new()
+	spin_btn.text = "КРУТИТЬ БАРАБАН (СТАВКА СПИСЫВАЕТСЯ СРАЗУ)"
+	_style_button(spin_btn, true)
+	spin_btn.pressed.connect(func() -> void:
+		Casino.spin(casino_bet)
+		_refresh_casino_ui()
+	)
+	cas_vb.add_child(spin_btn)
+
+	casino_catch_btn = Button.new()
+	casino_catch_btn.text = "!!! УХО ДЁРНУЛОСЬ — ПОЙМАТЬ ЛИСА ЗА ХВОСТ !!!"
+	casino_catch_btn.visible = false
+	_style_button(casino_catch_btn, true)
+	casino_catch_btn.pressed.connect(func() -> void:
+		Casino.on_fox_ear_clicked()
+		_refresh_casino_ui()
+	)
+	cas_vb.add_child(casino_catch_btn)
+
+	# 3. Окно выбора Мутаций мицелия (1 из 3)
+	mut_overlay = ColorRect.new()
+	mut_overlay.color = Color(0.0, 0.0, 0.0, 0.86)
+	mut_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	mut_overlay.visible = false
+	modal_layer.add_child(mut_overlay)
+
+	var mut_cc := CenterContainer.new()
+	mut_cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	mut_overlay.add_child(mut_cc)
+
+	var mut_box := PanelContainer.new()
+	mut_box.custom_minimum_size = Vector2(620, 0)
+	mut_box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color("#090103"), 3))
+	mut_cc.add_child(mut_box)
+
+	var mut_vb := VBoxContainer.new()
+	mut_vb.add_theme_constant_override("separation", 12)
+	mut_box.add_child(mut_vb)
+
+	var mut_t := Label.new()
+	mut_t.text = "[МУТАЦИЯ МИЦЕЛИЯ] ВЫБЕРИ ШТАММ РАЗВИТИЯ (1 ИЗ 3)"
+	mut_t.add_theme_color_override("font_color", Color("#ff1e38"))
+	mut_vb.add_child(mut_t)
+
+	mut_cards_box = VBoxContainer.new()
+	mut_cards_box.add_theme_constant_override("separation", 8)
+	mut_vb.add_child(mut_cards_box)
+
+	# 4. Виртуальная ФС /sys/146/NNN.log
+	logs_overlay = ColorRect.new()
+	logs_overlay.color = Color(0.0, 0.0, 0.0, 0.86)
+	logs_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	logs_overlay.visible = false
+	modal_layer.add_child(logs_overlay)
+
+	var log_cc := CenterContainer.new()
+	log_cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	logs_overlay.add_child(log_cc)
+
+	var log_box := PanelContainer.new()
+	log_box.custom_minimum_size = Vector2(720, 480)
+	log_box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#00e5ff"), Color("#050103"), 2))
+	log_cc.add_child(log_box)
+
+	var log_vb := VBoxContainer.new()
+	log_vb.add_theme_constant_override("separation", 8)
+	log_box.add_child(log_vb)
+
+	var log_hdr := HBoxContainer.new()
+	log_vb.add_child(log_hdr)
+	var log_t := Label.new()
+	log_t.text = "ВИРТУАЛЬНАЯ ФАЙЛОВАЯ СИСТЕМА // /SYS/146/*.LOG"
+	log_t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	log_t.add_theme_color_override("font_color", Color("#00e5ff"))
+	log_hdr.add_child(log_t)
+
+	var log_close := Button.new()
+	log_close.text = "ЗАКРЫТЬ [ESC]"
+	_style_button(log_close)
+	log_close.pressed.connect(func() -> void: logs_overlay.visible = false)
+	log_hdr.add_child(log_close)
+
+	var log_scroll := ScrollContainer.new()
+	log_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	FoxTheme.apply_scrollbar(log_scroll.get_v_scroll_bar())
+	log_vb.add_child(log_scroll)
+
+	logs_list_box = VBoxContainer.new()
+	logs_list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	logs_list_box.add_theme_constant_override("separation", 4)
+	log_scroll.add_child(logs_list_box)
+
+	logs_lore_lbl = Label.new()
+	logs_lore_lbl.text = "Выбери расшифрованный лог из списка выше..."
+	logs_lore_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	logs_lore_lbl.add_theme_color_override("font_color", Color("#ecd9dc"))
+	log_vb.add_child(logs_lore_lbl)
+
+	# 5. DEBUG-меню
 	debug_overlay = ColorRect.new()
 	debug_overlay.color = Color(0.0, 0.0, 0.0, 0.82)
 	debug_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -618,8 +877,8 @@ func _build_modals() -> void:
 	debug_overlay.add_child(dcc)
 
 	var dbox := PanelContainer.new()
-	dbox.custom_minimum_size = Vector2(560, 0)
-	dbox.add_theme_stylebox_override("panel", _make_box_style(Color("#080203"), Color("#d6ff3a"), 3))
+	dbox.custom_minimum_size = Vector2(580, 0)
+	dbox.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#d6ff3a"), Color("#080203"), 3))
 	dcc.add_child(dbox)
 
 	var dvb := VBoxContainer.new()
@@ -629,7 +888,7 @@ func _build_modals() -> void:
 	var dhdr := HBoxContainer.new()
 	dvb.add_child(dhdr)
 	var dlbl := Label.new()
-	dlbl.text = "[DEBUG] ПРОВЕРКА ВИЗУАЛА, ЭВОЛЮЦИИ И ХАОСА"
+	dlbl.text = "[DEBUG] ПРОВЕРКА ЭВОЛЮЦИИ, КАЗИНО И МУТАЦИЙ"
 	dlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	dlbl.add_theme_color_override("font_color", Color("#d6ff3a"))
 	dhdr.add_child(dlbl)
@@ -659,6 +918,7 @@ func _build_modals() -> void:
 		_style_button(ib)
 		ib.pressed.connect(func() -> void:
 			GameState.infection = inf_v
+			GameState._check_infection_step()
 			GameState.state_changed.emit()
 		)
 		myc_row.add_child(ib)
@@ -667,14 +927,18 @@ func _build_modals() -> void:
 	dvb.add_child(chaos_row)
 
 	var add_money := Button.new()
-	add_money.text = "+100 млн монет"
+	add_money.text = "+100 млн + 50 спор"
 	add_money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_style_button(add_money)
-	add_money.pressed.connect(func() -> void: GameState.earn(BigNum.from_float(1.0e8)))
+	add_money.pressed.connect(func() -> void:
+		GameState.earn(BigNum.from_float(1.0e8))
+		GameState.spores += 50
+		GameState.state_changed.emit()
+	)
 	chaos_row.add_child(add_money)
 
 	var sp_glitch := Button.new()
-	sp_glitch.text = "Вызвать глитч 146"
+	sp_glitch.text = "Глитч 146"
 	sp_glitch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_style_button(sp_glitch)
 	sp_glitch.pressed.connect(func() -> void:
@@ -684,7 +948,7 @@ func _build_modals() -> void:
 	chaos_row.add_child(sp_glitch)
 
 	var sp_deal := Button.new()
-	sp_deal.text = "Случайная сделка"
+	sp_deal.text = "Сделка"
 	sp_deal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_style_button(sp_deal)
 	sp_deal.pressed.connect(func() -> void:
@@ -704,6 +968,44 @@ func _build_modals() -> void:
 	)
 	chaos_row.add_child(clr_fx)
 
+func _refresh_casino_ui() -> void:
+	casino_spores_lbl.text = "Твои споры: %d  |  Выбранная ставка: %d  |  Улик поймано: %d" % [
+		GameState.spores, casino_bet, Casino.clues
+	]
+
+func _open_mutations_modal(options: Array[String]) -> void:
+	for ch in mut_cards_box.get_children():
+		ch.queue_free()
+	for id: String in options:
+		var info: Dictionary = Mutations.POOL[id]
+		var btn := Button.new()
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.text = "%s\n%s" % [info["name"], info["desc"]]
+		_style_button(btn, true)
+		btn.pressed.connect(func() -> void:
+			Mutations.pick(id)
+			mut_overlay.visible = false
+			vfx.spawn_purchase_burst(Vector2(800, 450), "ШТАММ ВЖИВЛЁН: " + str(info["name"]), true)
+		)
+		mut_cards_box.add_child(btn)
+	mut_overlay.visible = true
+
+func _open_logs_modal() -> void:
+	for ch in logs_list_box.get_children():
+		ch.queue_free()
+	var items := Achievements.listing()
+	for item: Dictionary in items:
+		var btn := Button.new()
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.text = "%s  —  %s" % [item["path"], item["title"]]
+		_style_button(btn, bool(item["ok"]))
+		btn.disabled = not bool(item["ok"])
+		btn.pressed.connect(func() -> void:
+			logs_lore_lbl.text = "[%s] %s" % [item["path"], item["lore"]]
+		)
+		logs_list_box.add_child(btn)
+	logs_overlay.visible = true
+
 func _open_deal(deal: Dictionary) -> void:
 	if deal_overlay.visible:
 		return
@@ -719,7 +1021,7 @@ func _open_deal(deal: Dictionary) -> void:
 func _on_shop_btn_hover(btn: Button) -> void:
 	var is_eater := float(GameState.fx.get("eater", 0.0)) > 0.0
 	var inf := Economy.inf_eff(GameState)
-	if (not is_eater and inf < 60) or btn.has_meta("dodging"):
+	if (not is_eater and inf < 60 and not Mutations.has_glitch("dodge_shop")) or btn.has_meta("dodging"):
 		return
 	var dist := 34.0 if is_eater else 22.0
 	var dx := randf_range(-dist, dist)
@@ -759,6 +1061,7 @@ func _tick_fake_button(delta: float, inf: int) -> void:
 			_style_button(fbtn)
 			fbtn.pressed.connect(func() -> void:
 				GameState.fake_clicks += 1
+				Audio.play_sfx("error")
 				flash_red_val = 0.85
 				shake_time = 0.25
 				voice_lbl.text = "> Fox OS: Доступ запрещен."
@@ -777,11 +1080,13 @@ func _refresh_ui() -> void:
 	var tier: int = Economy.tier_of(ph)
 	var inf: int = Economy.inf_eff(GameState)
 	var greed := float(GameState.fx.get("greed", 0.0)) > 0.0
+	var bin_shop := Mutations.has_glitch("binary_shop")
 
 	sigil_btn.tier = tier
 	sigil_btn.infection_pct = inf
 	sigil_lbl.text = SIGIL_TITLES[tier - 1]
 	phase_lbl.text = "ФАЗА %d/%d: %s" % [ph, GameData.PHASES.size(), GameData.PHASES[ph - 1]["name"].to_upper()]
+	casino_btn.text = "[CASINO.EXE // СПОРЫ: %d]" % GameState.spores
 
 	coins_lbl.text = "ERR_0x00" if greed else GameState.coins.format_ru()
 	var total_cps: BigNum = GameState.get_effective_cps()
@@ -790,6 +1095,8 @@ func _refresh_ui() -> void:
 	var fx_parts: Array[String] = []
 	if GameState.is_buff_active():
 		fx_parts.append("[ПЕРЕПОЛНЕНИЕ БУФЕРА ×7]")
+	if not Mutations.active.is_empty():
+		fx_parts.append("[ШТАММОВ: %d/5]" % Mutations.active.size())
 	for k: String in GameState.fx.keys():
 		fx_parts.append("[%s: %dс]" % [k.to_upper(), int(ceil(float(GameState.fx[k])))])
 	fx_lbl.text = "  |  ".join(fx_parts)
@@ -800,7 +1107,6 @@ func _refresh_ui() -> void:
 	else:
 		phase_bar.value = 1.0
 
-	# Подсветка активного режима покупки (×1 / ×10 / МАКС)
 	for mode: String in amt_btns.keys():
 		var ab: Button = amt_btns[mode]
 		var is_sel := (mode == GameState.buy_amt)
@@ -818,9 +1124,10 @@ func _refresh_ui() -> void:
 		var meta: Label = row["meta"]
 		btn.text = "%s   [×%d]" % [bdata["name"], GameState.b[i]]
 		btn.disabled = not GameState.coins.gte(cost)
+		var cost_str := "ERR_0x00" if greed else ("0x" + String.num_int64(int(cost.to_float()), 16) if (bin_shop and cost.exponent < 9) else cost.format_ru())
 		meta.text = "Цена%s: %s · +%s/с" % [
 			(" ×%d" % n if n > 1 else ""),
-			"ERR_0x00" if greed else cost.format_ru(),
+			cost_str,
 			"ERR_0x00" if greed else unit_cps.format_ru()
 		]
 
@@ -849,10 +1156,13 @@ func _refresh_ui() -> void:
 		var c: BigNum = ub.get_meta("cost")
 		ub.disabled = lock_up or not GameState.coins.gte(c)
 
-	myc_lbl.text = "МИЦЕЛИЙ: %d%% (доход ×%.1f)" % [inf, Economy.inf_mult(GameState)]
+	myc_lbl.text = "МИЦЕЛИЙ: %d%% (доход ×%.1f · штаммов %d/5)" % [inf, Economy.inf_mult(GameState), Mutations.active.size()]
 	myc_bar.value = inf
 	var next_myc: BigNum = Economy.myc_cost(GameState)
 	spore_btn.text = "МАКС" if inf >= 100 else "Споры (%s)" % ("ERR_0x00" if greed else next_myc.format_ru())
 	spore_btn.disabled = GameState.infection >= 100 or not GameState.coins.gte(next_myc)
 	purify_btn.text = "БЛОК" if float(GameState.fx.get("purLock", 0.0)) > 0.0 else "Очистить (-50%)"
 	purify_btn.disabled = GameState.infection <= 0 or float(GameState.fx.get("purLock", 0.0)) > 0.0
+
+	if casino_overlay.visible:
+		_refresh_casino_ui()

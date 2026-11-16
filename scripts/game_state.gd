@@ -1,11 +1,16 @@
 extends Node
 
 signal state_changed
-signal phase_changed(new_phase: int, phase_data: Dictionary)
+signal phase_changed(new_phase: int)
+signal phase_completed(finished_phase: int, elapsed_sec: float)
+signal infection_step(step: int)
+signal stall_detected
 signal voice_logged(text: String)
 signal deal_requested(deal: Dictionary)
 signal glitch_spawn_requested(count: int)
 signal screen_flash_requested(intensity: float, shake: bool)
+
+const STALL_SECONDS := 180.0
 
 const DEALS: Array[Dictionary] = [
 	{ "id": "over",     "name": "Кровавый оверклокинг", "rew": "×4 к пассивному доходу на 4 мин.",            "cur": "Экран переходит в жёсткий 1-битный ч/б режим." },
@@ -25,8 +30,16 @@ var run_earned: BigNum = BigNum.zero()
 var life_earned: BigNum = BigNum.zero()
 var max_coins: BigNum = BigNum.zero()
 
+var spores: int = 3
+var shards: int = 0
+var free_shards: int = 0
+var spent: int = 0
+var tree: Dictionary = {}
+var reinc: int = 0
+
 var run_sec: float = 0.0
 var total_sec: float = 0.0
+var phase_time: float = 0.0
 var clicks: int = 0
 var manual_clicks: int = 0
 var fake_clicks: int = 0
@@ -35,12 +48,7 @@ var b: Array[int] = []
 var b_up: Array = []
 var cu: Dictionary = {}
 var infection: int = 0
-
-var shards: int = 0
-var free_shards: int = 0
-var spent: int = 0
-var tree: Dictionary = {}
-var reinc: int = 0
+var infection_steps_done: int = 0
 
 var fx: Dictionary = {}
 var perks: Dictionary = {}
@@ -50,6 +58,9 @@ var last_phase: int = 1
 var deal_timer: float = 0.0
 var glitch_timer: float = 45.0
 var click_win: Array[float] = []
+
+var _stall_cd: float = 2.0
+var _stall_offered: bool = false
 
 func _ready() -> void:
 	reset_run_data()
@@ -69,6 +80,8 @@ func reset_run_data() -> void:
 	for u: Dictionary in GameData.SYSTEM_UPS:
 		cu[u["k"]] = false
 	infection = 0
+	infection_steps_done = 0
+	phase_time = 0.0
 	fx.clear()
 	click_win.clear()
 
@@ -100,16 +113,31 @@ func earn(amount: BigNum) -> void:
 		max_coins = coins.copy()
 	var ph: int = Economy.phase_of(self)
 	if ph > last_phase:
+		var finished_p := last_phase
+		var elapsed := phase_time
 		last_phase = ph
+		phase_time = 0.0
+		spores += 3
+		phase_completed.emit(finished_p, elapsed)
+		phase_changed.emit(ph)
 		var pdata: Dictionary = GameData.PHASES[ph - 1]
 		voice_logged.emit(pdata["log"])
-		phase_changed.emit(ph, pdata)
 		screen_flash_requested.emit(1.0, true)
+		if ph >= 5:
+			Achievements.try_unlock_by_key("phase_5")
+		if ph >= 10:
+			Achievements.try_unlock_by_key("phase_10")
+		if ph >= 16:
+			Achievements.try_unlock_by_key("phase_16")
 
 func do_click() -> Dictionary:
 	var now: float = Time.get_unix_time_from_system()
 	clicks += 1
 	manual_clicks += 1
+	if manual_clicks == 1:
+		Achievements.try_unlock_by_key("first_click")
+	if manual_clicks % 15 == 0:
+		spores += 1
 
 	var cap: int = GameData.CLICK_CAP + int(perks.get("clickCapAdd", 0))
 	while not click_win.is_empty() and now - click_win[0] > 1.0:
@@ -121,7 +149,7 @@ func do_click() -> Dictionary:
 		click_win.append(now)
 		gain = gain.add(get_effective_cps().mul_float(pct))
 
-	gain = gain.mul_float(1.0 + float(perks.get("clickMult", 0.0)))
+	gain = gain.mul_float((1.0 + float(perks.get("clickMult", 0.0))) * Mutations.click_mult())
 	if float(fx.get("eater", 0.0)) > 0.0:
 		gain = gain.mul_float(10.0)
 	if float(fx.get("greed", 0.0)) > 0.0:
@@ -148,6 +176,8 @@ func do_click() -> Dictionary:
 	if float(fx.get("phantom", 0.0)) > 0.0 and not is_crit:
 		coins = coins.mul_float(0.995)
 
+	Audio.play_sfx("crit" if is_crit else "click")
+	Fox.on_activity()
 	state_changed.emit()
 	return { "gain": gain, "is_crit": is_crit, "crit_mult": crit_mult }
 
@@ -160,9 +190,17 @@ func buy_building(i: int) -> bool:
 	var n: int = amt_for(i)
 	var cost: BigNum = Economy.b_cost_n(self, i, b[i], n)
 	if not coins.gte(cost):
+		Audio.play_sfx("error")
 		return false
 	coins = coins.sub(cost)
 	b[i] += n
+	_stall_offered = false
+	if i == 0 and b[0] >= 1:
+		Achievements.try_unlock_by_key("first_piggy")
+	if i == 11 and b[11] >= 1:
+		Achievements.try_unlock_by_key("singularity")
+	Audio.play_sfx("buy")
+	Fox.on_activity()
 	state_changed.emit()
 	return true
 
@@ -202,15 +240,20 @@ func get_available_upgrades() -> Array[Dictionary]:
 
 func buy_upgrade(up: Dictionary) -> bool:
 	if float(fx.get("voidLock", 0.0)) > 0.0:
+		Audio.play_sfx("error")
 		return false
 	var cost: BigNum = up["cost"]
 	if not coins.gte(cost):
+		Audio.play_sfx("error")
 		return false
 	coins = coins.sub(cost)
 	if up["type"] == "sys":
 		cu[up["key"]] = true
 	else:
 		b_up[int(up["bld_idx"])].append(int(up["th"]))
+	_stall_offered = false
+	Audio.play_sfx("buy")
+	Fox.on_activity()
 	state_changed.emit()
 	return true
 
@@ -219,25 +262,44 @@ func buy_spore() -> bool:
 		return false
 	var cost: BigNum = Economy.myc_cost(self)
 	if not coins.gte(cost):
+		Audio.play_sfx("error")
 		return false
 	coins = coins.sub(cost)
 	infection = mini(100, infection + 20)
+	spores += 2
+	if infection >= 100:
+		Achievements.try_unlock_by_key("full_inf")
+	Audio.play_sfx("buy")
+	Fox.on_activity()
+	_check_infection_step()
 	state_changed.emit()
 	return true
 
 func purify() -> bool:
 	if float(fx.get("purLock", 0.0)) > 0.0 or infection <= 0:
+		Audio.play_sfx("error")
 		return false
 	coins = coins.mul_float(1.0 - GameData.PURIFY_FRAC)
 	infection = 0
+	infection_steps_done = 0
+	Mutations.purge()
+	Audio.play_sfx("buy")
 	state_changed.emit()
 	return true
 
+func _check_infection_step() -> void:
+	var step := int(float(infection) / 20.0)
+	while infection_steps_done < step:
+		infection_steps_done += 1
+		infection_step.emit(infection_steps_done)
+
 func catch_glitch() -> BigNum:
 	buff_until = Time.get_unix_time_from_system() + GameData.BUFF_SEC
+	spores += 3
 	var bonus: BigNum = get_effective_cps().mul_float(5.0)
 	earn(bonus)
-	voice_logged.emit("Переполнение буфера. Ешь.")
+	Audio.play_sfx("win")
+	voice_logged.emit("Переполнение буфера. Ешь. (+3 споры)")
 	state_changed.emit()
 	return bonus
 
@@ -245,6 +307,7 @@ func miss_glitch() -> void:
 	var loss_rate := 0.15 if float(fx.get("spam", 0.0)) > 0.0 else 0.05
 	var lost: BigNum = coins.mul_float(loss_rate)
 	coins = coins.sub(lost)
+	Audio.play_sfx("error")
 	voice_logged.emit("Ты не успел. Я забрал своё: −%s" % lost.format_ru())
 	screen_flash_requested.emit(0.85, true)
 	state_changed.emit()
@@ -280,13 +343,31 @@ func apply_deal(deal: Dictionary) -> void:
 		"agony":
 			fx["agony"] = 66.0
 			fx.erase("agonyDebuff")
+	Achievements.try_unlock_by_key("deal_signed")
 	voice_logged.emit("Грех принят: %s." % deal["name"])
 	screen_flash_requested.emit(0.9, true)
 	state_changed.emit()
 
+func _check_stall() -> void:
+	if _stall_offered or spores <= 0:
+		return
+	var c_val := get_effective_cps().to_float()
+	if c_val <= 0.0:
+		return
+	var cheapest: BigNum = BigNum.new(9.9, 999)
+	for i in range(GameData.BUILDINGS.size()):
+		var c := Economy.b_cost(self, i, b[i])
+		if not c.gte(cheapest):
+			cheapest = c
+	var gap := cheapest.sub(coins).to_float()
+	if gap > 0.0 and (gap / c_val) > STALL_SECONDS:
+		_stall_offered = true
+		stall_detected.emit()
+
 func step(dt: float) -> void:
 	run_sec += dt
 	total_sec += dt
+	phase_time += dt
 	earn(get_effective_cps().mul_float(dt))
 
 	for k: String in fx.keys():
@@ -295,6 +376,11 @@ func step(dt: float) -> void:
 			fx.erase(k)
 			if k == "agony":
 				fx["agonyDebuff"] = 300.0
+
+	_stall_cd -= dt
+	if _stall_cd <= 0.0:
+		_stall_cd = 2.0
+		_check_stall()
 
 	deal_timer += dt
 	if deal_timer >= 900.0:
@@ -318,9 +404,10 @@ func debug_set_phase(p: int) -> void:
 	if not life_earned.gte(val):
 		life_earned = val.copy()
 	last_phase = p
+	phase_time = 0.0
 	var pdata: Dictionary = GameData.PHASES[idx]
 	voice_logged.emit(pdata["log"])
-	phase_changed.emit(p, pdata)
+	phase_changed.emit(p)
 	screen_flash_requested.emit(0.8, true)
 	state_changed.emit()
 
@@ -331,17 +418,23 @@ func save_game() -> void:
 		"run_earned": run_earned.to_dict(),
 		"life_earned": life_earned.to_dict(),
 		"max_coins": max_coins.to_dict(),
+		"spores": spores,
 		"run_sec": run_sec,
 		"total_sec": total_sec,
+		"phase_time": phase_time,
 		"clicks": clicks,
 		"manual_clicks": manual_clicks,
 		"b": b,
 		"b_up": b_up,
 		"cu": cu,
 		"infection": infection,
+		"infection_steps_done": infection_steps_done,
 		"shards": shards,
 		"free_shards": free_shards,
-		"reinc": reinc
+		"reinc": reinc,
+		"mutations": Mutations.active,
+		"ach": Achievements.unlocked,
+		"casino": Casino.get_state()
 	}
 	var f := FileAccess.open(GameData.SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -360,11 +453,14 @@ func load_game() -> void:
 	run_earned = BigNum.from_dict(parsed.get("run_earned"))
 	life_earned = BigNum.from_dict(parsed.get("life_earned"))
 	max_coins = BigNum.from_dict(parsed.get("max_coins"))
+	spores = int(parsed.get("spores", 3))
 	run_sec = float(parsed.get("run_sec", 0.0))
 	total_sec = float(parsed.get("total_sec", 0.0))
+	phase_time = float(parsed.get("phase_time", 0.0))
 	clicks = int(parsed.get("clicks", 0))
 	manual_clicks = int(parsed.get("manual_clicks", 0))
 	infection = int(parsed.get("infection", 0))
+	infection_steps_done = int(parsed.get("infection_steps_done", int(float(infection) / 20.0)))
 	shards = int(parsed.get("shards", 0))
 	free_shards = int(parsed.get("free_shards", 0))
 	reinc = int(parsed.get("reinc", 0))
@@ -374,3 +470,9 @@ func load_game() -> void:
 	var saved_cu: Dictionary = parsed.get("cu", {})
 	for k: String in cu.keys():
 		cu[k] = bool(saved_cu.get(k, false))
+	var saved_muts: Array = parsed.get("mutations", [])
+	Mutations.load_active(saved_muts)
+	var saved_ach: Dictionary = parsed.get("ach", {})
+	Achievements.load_unlocked(saved_ach)
+	var saved_cas: Dictionary = parsed.get("casino", {})
+	Casino.load_state(saved_cas)
