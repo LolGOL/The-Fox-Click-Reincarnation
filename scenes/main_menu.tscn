@@ -1,0 +1,187 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu")
+
+[node name="Bg" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.0196078, 0, 0, 1)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 30
+
+[node name="TagLabel" type="Label" parent="Center/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "FOX OS // /SYS/146"
+horizontal_alignment = 1
+
+[node name="TitleLabel" type="Label" parent="Center/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "THE FOX CLICK REINCARNATION"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="Center/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "[ НАЖМИ, ЧТОБЫ ВОЙТИ ]"
+
+[node name="VoiceLabel" type="Label" parent="Center/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "> Fox OS: Я ждал тебя. Нажми."
+horizontal_alignment = 1
+
+[node name="BottomBar" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -52.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 40
+alignment = 1
+
+[node name="ArchiveButton" type="Button" parent="BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ АРХИВ /SYS/146 ]"
+
+[node name="SoundButton" type="Button" parent="BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ ЗВУК: ВКЛ ]"
+
+[node name="NoiseButton" type="Button" parent="BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ СНИЗИТЬ ШУМ ]"
+
+[node name="QuitButton" type="Button" parent="BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ ВЫХОД ]"
+
+[node name="ArchiveShade" type="ColorRect" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.78)
+
+[node name="ArchivePanel" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(840, 600)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -300.0
+offset_right = 420.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ArchiveVBox" type="VBoxContainer" parent="ArchivePanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="ArchivePanel/ArchiveVBox"]
+layout_mode = 2
+
+[node name="ArchiveTitle" type="Label" parent="ArchivePanel/ArchiveVBox/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "/SYS/146 // АРХИВ"
+
+[node name="CloseButton" type="Button" parent="ArchivePanel/ArchiveVBox/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[ X ]"
+
+[node name="ArchiveScroll" type="ScrollContainer" parent="ArchivePanel/ArchiveVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="ArchiveList" type="VBoxContainer" parent="ArchivePanel/ArchiveVBox/ArchiveScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LoreLabel" type="Label" parent="ArchivePanel/ArchiveVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "> Выбери файл."
+autowrap_mode = 3
+
+[node name="CrtOverlay" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Flash" type="ColorRect" parent="."]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 0.1, 0.2, 1)
+
+[node name="Fade" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
