@@ -113,6 +113,8 @@ func format_ru() -> String:
 		return "0"
 	if exponent < 3:
 		var v: float = mantissa * pow(10.0, exponent)
+		if is_equal_approx(v, round(v)):
+			return "%d" % int(round(v))
 		if v < 10.0:
 			return str(snappedf(v, 0.01))
 		if v < 100.0:

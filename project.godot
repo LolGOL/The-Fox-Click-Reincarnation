@@ -27,6 +27,14 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/vsync/vsync_mode=2
 
+[file_customization]
+
+folder_colors={
+"res://scenes/": "blue",
+"res://scripts/": "green",
+"res://shaders/": "red"
+}
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

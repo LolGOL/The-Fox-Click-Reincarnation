@@ -3,6 +3,22 @@ extends Node
 signal state_changed
 signal phase_changed(new_phase: int, phase_data: Dictionary)
 signal voice_logged(text: String)
+signal deal_requested(deal: Dictionary)
+signal glitch_spawn_requested(count: int)
+signal screen_flash_requested(intensity: float, shake: bool)
+
+const DEALS: Array[Dictionary] = [
+	{ "id": "over",     "name": "Кровавый оверклокинг", "rew": "×4 к пассивному доходу на 4 мин.",            "cur": "Экран переходит в жёсткий 1-битный ч/б режим." },
+	{ "id": "eater",    "name": "Пожиратель курсора",   "rew": "×10 к силе клика на 2 мин.",                  "cur": "Кнопки магазина убегают от курсора при наведении." },
+	{ "id": "myc",      "name": "Мицелиевый шок",       "rew": "Мицелий мгновенно 100% на 3 мин.",            "cur": "Кнопка «Очищение» заблокирована на 5 мин." },
+	{ "id": "sac",      "name": "Жертва паствы",        "rew": "Мгновенно: 15 минут текущего CPS.",            "cur": "Сжигает 20% самого дорогого купленного здания." },
+	{ "id": "greed",    "name": "Слепая жадность",      "rew": "×3 ко всему доходу на 6 мин.",                "cur": "Все числа и цены заменены на ERR_0x00." },
+	{ "id": "spam",     "name": "Вирусный спам",        "rew": "Мгновенно: 5 глитч-артефактов 146.",           "cur": "Штраф за пропуск глитча растёт с 5% до 15%." },
+	{ "id": "rollback", "name": "Откат ядра",           "rew": "Стоимость всех зданий −35% на 3 мин.",        "cur": "Пассивный доход падает до 0 (только клики)." },
+	{ "id": "phantom",  "name": "Фантомная боль",       "rew": "10% шанс критического удара ×250.",           "cur": "Каждый клик без крита сжигает 0.5% монет." },
+	{ "id": "void",     "name": "Сделка с Пустотой",    "rew": "Мгновенно: +25% к монетам забега.",           "cur": "Улучшения заблокированы на 10 мин." },
+	{ "id": "agony",    "name": "Агония Fox OS",        "rew": "×6.66 ко всему доходу на 66 сек.",            "cur": "После баффа: −50% ко всему доходу на 5 мин." }
+]
 
 var coins: BigNum = BigNum.zero()
 var run_earned: BigNum = BigNum.zero()
@@ -13,6 +29,7 @@ var run_sec: float = 0.0
 var total_sec: float = 0.0
 var clicks: int = 0
 var manual_clicks: int = 0
+var fake_clicks: int = 0
 
 var b: Array[int] = []
 var b_up: Array = []
@@ -30,6 +47,8 @@ var perks: Dictionary = {}
 var buy_amt: String = "1"
 var buff_until: float = 0.0
 var last_phase: int = 1
+var deal_timer: float = 0.0
+var glitch_timer: float = 45.0
 var click_win: Array[float] = []
 
 func _ready() -> void:
@@ -56,6 +75,21 @@ func reset_run_data() -> void:
 func is_buff_active() -> bool:
 	return Time.get_unix_time_from_system() < buff_until
 
+func get_effective_cps() -> BigNum:
+	if float(fx.get("rollback", 0.0)) > 0.0:
+		return BigNum.zero()
+	var base: BigNum = Economy.cps(self, is_buff_active())
+	var mult := 1.0
+	if float(fx.get("over", 0.0)) > 0.0:
+		mult *= 4.0
+	if float(fx.get("greed", 0.0)) > 0.0:
+		mult *= 3.0
+	if float(fx.get("agony", 0.0)) > 0.0:
+		mult *= 6.66
+	if float(fx.get("agonyDebuff", 0.0)) > 0.0:
+		mult *= 0.5
+	return base.mul_float(mult)
+
 func earn(amount: BigNum) -> void:
 	if is_zero_approx(amount.mantissa) or amount.mantissa < 0.0:
 		return
@@ -70,6 +104,7 @@ func earn(amount: BigNum) -> void:
 		var pdata: Dictionary = GameData.PHASES[ph - 1]
 		voice_logged.emit(pdata["log"])
 		phase_changed.emit(ph, pdata)
+		screen_flash_requested.emit(1.0, true)
 
 func do_click() -> Dictionary:
 	var now: float = Time.get_unix_time_from_system()
@@ -84,18 +119,35 @@ func do_click() -> Dictionary:
 	var pct: float = Economy.click_pct(self)
 	if pct > 0.0 and click_win.size() < cap:
 		click_win.append(now)
-		gain = gain.add(Economy.cps(self, is_buff_active()).mul_float(pct))
+		gain = gain.add(get_effective_cps().mul_float(pct))
 
 	gain = gain.mul_float(1.0 + float(perks.get("clickMult", 0.0)))
+	if float(fx.get("eater", 0.0)) > 0.0:
+		gain = gain.mul_float(10.0)
+	if float(fx.get("greed", 0.0)) > 0.0:
+		gain = gain.mul_float(3.0)
+	if float(fx.get("agony", 0.0)) > 0.0:
+		gain = gain.mul_float(6.66)
+	if float(fx.get("agonyDebuff", 0.0)) > 0.0:
+		gain = gain.mul_float(0.5)
 
-	var crit_chance: float = minf(0.75, float(perks.get("critChance", 0.0)))
-	var is_crit: bool = crit_chance > 0.0 and randf() < crit_chance
-	var crit_mult: float = 1.0
-	if is_crit:
-		crit_mult = GameData.CRIT_BASE + float(perks.get("critMultAdd", 0.0))
+	var is_crit := false
+	var crit_mult := 1.0
+	if float(fx.get("phantom", 0.0)) > 0.0 and randf() < 0.10:
+		is_crit = true
+		crit_mult = 250.0
 		gain = gain.mul_float(crit_mult)
+	else:
+		var crit_chance: float = minf(0.75, float(perks.get("critChance", 0.0)))
+		if crit_chance > 0.0 and randf() < crit_chance:
+			is_crit = true
+			crit_mult = GameData.CRIT_BASE + float(perks.get("critMultAdd", 0.0))
+			gain = gain.mul_float(crit_mult)
 
 	earn(gain)
+	if float(fx.get("phantom", 0.0)) > 0.0 and not is_crit:
+		coins = coins.mul_float(0.995)
+
 	state_changed.emit()
 	return { "gain": gain, "is_crit": is_crit, "crit_mult": crit_mult }
 
@@ -149,6 +201,8 @@ func get_available_upgrades() -> Array[Dictionary]:
 	return list
 
 func buy_upgrade(up: Dictionary) -> bool:
+	if float(fx.get("voidLock", 0.0)) > 0.0:
+		return false
 	var cost: BigNum = up["cost"]
 	if not coins.gte(cost):
 		return false
@@ -172,17 +226,102 @@ func buy_spore() -> bool:
 	return true
 
 func purify() -> bool:
-	if infection <= 0:
+	if float(fx.get("purLock", 0.0)) > 0.0 or infection <= 0:
 		return false
 	coins = coins.mul_float(1.0 - GameData.PURIFY_FRAC)
 	infection = 0
 	state_changed.emit()
 	return true
 
+func catch_glitch() -> BigNum:
+	buff_until = Time.get_unix_time_from_system() + GameData.BUFF_SEC
+	var bonus: BigNum = get_effective_cps().mul_float(5.0)
+	earn(bonus)
+	voice_logged.emit("Переполнение буфера. Ешь.")
+	state_changed.emit()
+	return bonus
+
+func miss_glitch() -> void:
+	var loss_rate := 0.15 if float(fx.get("spam", 0.0)) > 0.0 else 0.05
+	var lost: BigNum = coins.mul_float(loss_rate)
+	coins = coins.sub(lost)
+	voice_logged.emit("Ты не успел. Я забрал своё: −%s" % lost.format_ru())
+	screen_flash_requested.emit(0.85, true)
+	state_changed.emit()
+
+func apply_deal(deal: Dictionary) -> void:
+	var id: String = deal["id"]
+	match id:
+		"over":
+			fx["over"] = 240.0
+		"eater":
+			fx["eater"] = 120.0
+		"myc":
+			fx["myc"] = 180.0
+			fx["purLock"] = 300.0
+		"sac":
+			earn(get_effective_cps().mul_float(900.0))
+			for i in range(b.size() - 1, -1, -1):
+				if b[i] > 0:
+					b[i] = maxi(0, b[i] - maxi(1, int(floor(float(b[i]) * 0.2))))
+					break
+		"greed":
+			fx["greed"] = 360.0
+		"spam":
+			fx["spam"] = 180.0
+			glitch_spawn_requested.emit(5)
+		"rollback":
+			fx["rollback"] = 180.0
+		"phantom":
+			fx["phantom"] = 120.0
+		"void":
+			earn(run_earned.mul_float(0.25))
+			fx["voidLock"] = 600.0
+		"agony":
+			fx["agony"] = 66.0
+			fx.erase("agonyDebuff")
+	voice_logged.emit("Грех принят: %s." % deal["name"])
+	screen_flash_requested.emit(0.9, true)
+	state_changed.emit()
+
 func step(dt: float) -> void:
 	run_sec += dt
 	total_sec += dt
-	earn(Economy.cps(self, is_buff_active()).mul_float(dt))
+	earn(get_effective_cps().mul_float(dt))
+
+	for k: String in fx.keys():
+		fx[k] = float(fx[k]) - dt
+		if float(fx[k]) <= 0.0:
+			fx.erase(k)
+			if k == "agony":
+				fx["agonyDebuff"] = 300.0
+
+	deal_timer += dt
+	if deal_timer >= 900.0:
+		deal_timer = 0.0
+		deal_requested.emit(DEALS[randi() % DEALS.size()])
+
+	glitch_timer -= dt
+	if glitch_timer <= 0.0:
+		glitch_timer = randf_range(55.0, 95.0)
+		glitch_spawn_requested.emit(1)
+
+	state_changed.emit()
+
+func debug_set_phase(p: int) -> void:
+	var idx := clampi(p, 1, GameData.PHASES.size()) - 1
+	var edge := float(GameData.PHASES[idx]["edge"])
+	var val := BigNum.from_float(0.0 if edge == 0.0 else edge * 1.001 + 10.0)
+	run_earned = val.copy()
+	if not coins.gte(val):
+		coins = val.copy()
+	if not life_earned.gte(val):
+		life_earned = val.copy()
+	last_phase = p
+	var pdata: Dictionary = GameData.PHASES[idx]
+	voice_logged.emit(pdata["log"])
+	phase_changed.emit(p, pdata)
+	screen_flash_requested.emit(0.8, true)
 	state_changed.emit()
 
 func save_game() -> void:
