@@ -48,7 +48,11 @@ var myc_lbl: Label
 var myc_bar: ProgressBar
 var spore_btn: Button
 var purify_btn: Button
-var casino_btn: Button
+var ach_btn: Button
+var menu_btn: Button
+var pause_overlay: ColorRect
+var tick_timer: Timer
+var _autoclick_cd: float = 0.0
 var sound_btn: Button
 var mute_fox_btn: Button
 
@@ -94,6 +98,7 @@ func _ready() -> void:
 	_build_ui()
 	_build_shader_and_vfx()
 	_build_modals()
+	_build_pause_overlay()
 
 	GameState.state_changed.connect(_refresh_ui)
 	GameState.voice_logged.connect(func(txt: String) -> void:
@@ -147,7 +152,7 @@ func _ready() -> void:
 			casino_status_lbl.text = "ПРОИГРЫШ... Лис усмехается и прячет твои %d спор." % int(res["bet"])
 	)
 
-	var tick_timer := Timer.new()
+	tick_timer = Timer.new()
 	tick_timer.wait_time = 0.1
 	tick_timer.autostart = true
 	tick_timer.timeout.connect(func() -> void: GameState.step(0.1))
@@ -167,9 +172,15 @@ func _input(event: InputEvent) -> void:
 			debug_overlay.visible = not debug_overlay.visible
 			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
-			debug_overlay.visible = false
-			casino_overlay.visible = false
-			logs_overlay.visible = false
+			if pause_overlay.visible:
+				_set_paused(false)
+			elif debug_overlay.visible or casino_overlay.visible or logs_overlay.visible:
+				debug_overlay.visible = false
+				casino_overlay.visible = false
+				logs_overlay.visible = false
+			else:
+				_set_paused(true)
+			get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
 	var now: float = Time.get_unix_time_from_system()
@@ -180,9 +191,18 @@ func _process(delta: float) -> void:
 
 	_update_drawers(delta)
 
+	if FoxSettings.autoclick_hold and sigil_btn.is_pressed and not pause_overlay.visible:
+		_autoclick_cd -= delta
+		if _autoclick_cd <= 0.0:
+			_autoclick_cd = 0.12
+			sigil_btn.clicked.emit(sigil_btn.get_global_rect().get_center())
+	else:
+		_autoclick_cd = 0.0
+
 	if shake_time > 0.0:
 		shake_time -= delta
-		ui_root.position = Vector2(randf_range(-5.0, 5.0), randf_range(-4.0, 4.0))
+		var shk := FoxSettings.shake_mult() * 2.0
+		ui_root.position = Vector2(randf_range(-5.0, 5.0), randf_range(-4.0, 4.0)) * shk
 	else:
 		ui_root.position = Vector2.ZERO
 
@@ -221,7 +241,7 @@ func _process(delta: float) -> void:
 		crt_mat.set_shader_parameter("flash_red", flash_red_val)
 
 func _update_drawers(delta: float) -> void:
-	var modal_busy := deal_overlay.visible or debug_overlay.visible or casino_overlay.visible or mut_overlay.visible or logs_overlay.visible
+	var modal_busy := deal_overlay.visible or debug_overlay.visible or casino_overlay.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
 	var mpos := get_global_mouse_position()
 
 	var l_hover := not modal_busy and left_drawer.get_global_rect().has_point(mpos)
@@ -336,20 +356,11 @@ func _build_ui() -> void:
 	ghost_lbl.add_theme_color_override("font_color", Color("#926870"))
 	hdr_hbox.add_child(ghost_lbl)
 
-	casino_btn = Button.new()
-	casino_btn.text = "[CASINO.EXE // СПОРЫ: 3]"
-	_style_button(casino_btn)
-	casino_btn.pressed.connect(func() -> void:
-		casino_overlay.visible = true
-		_refresh_casino_ui()
-	)
-	hdr_hbox.add_child(casino_btn)
-
-	var logs_btn := Button.new()
-	logs_btn.text = "[/SYS/146]"
-	_style_button(logs_btn)
-	logs_btn.pressed.connect(_open_logs_modal)
-	hdr_hbox.add_child(logs_btn)
+	ach_btn = Button.new()
+	ach_btn.text = "[ ДОСТИЖЕНИЯ ]"
+	_style_button(ach_btn)
+	ach_btn.pressed.connect(_open_logs_modal)
+	hdr_hbox.add_child(ach_btn)
 
 	sound_btn = Button.new()
 	sound_btn.text = "[ЗВУК: ВКЛ]"
@@ -378,6 +389,12 @@ func _build_ui() -> void:
 	phase_lbl = Label.new()
 	phase_lbl.add_theme_color_override("font_color", Color("#c0392b"))
 	hdr_hbox.add_child(phase_lbl)
+
+	menu_btn = Button.new()
+	menu_btn.text = "[ МЕНЮ ]"
+	_style_button(menu_btn)
+	menu_btn.pressed.connect(func() -> void: _set_paused(true))
+	hdr_hbox.add_child(menu_btn)
 
 	# Строка голоса Fox OS
 	var voice_panel := PanelContainer.new()
@@ -440,6 +457,13 @@ func _build_ui() -> void:
 		var gain: BigNum = res["gain"]
 		var is_crit: bool = res["is_crit"]
 		sigil_btn.trigger_hit_vfx(is_crit)
+		if fox_pet:
+			fox_pet.react(is_crit)
+		if FoxSettings.button_bounce:
+			sigil_btn.pivot_offset = sigil_btn.size * 0.5
+			var bt := create_tween()
+			bt.tween_property(sigil_btn, "scale", Vector2(0.94, 0.94), 0.04)
+			bt.tween_property(sigil_btn, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		var greed := float(GameState.fx.get("greed", 0.0)) > 0.0
 		var txt := ("КРИТ ×%.0f! +%s" % [res["crit_mult"], "ERR_0x00" if greed else gain.format_ru()]) if is_crit else ("+%s" % ("ERR_0x00" if greed else gain.format_ru()))
 		vfx.spawn_floating_text(gpos, txt, Color("#d6ff3a") if is_crit else Color("#ff1e38"), 1.25 if is_crit else 1.0)
@@ -621,6 +645,7 @@ func _build_shader_and_vfx() -> void:
 	add_child(pet_layer)
 
 	fox_pet = FoxPetActor.new()
+	fox_pet.anchor = sigil_btn
 	pet_layer.add_child(fox_pet)
 
 	var shader_layer := CanvasLayer.new()
@@ -1086,7 +1111,7 @@ func _refresh_ui() -> void:
 	sigil_btn.infection_pct = inf
 	sigil_lbl.text = SIGIL_TITLES[tier - 1]
 	phase_lbl.text = "ФАЗА %d/%d: %s" % [ph, GameData.PHASES.size(), GameData.PHASES[ph - 1]["name"].to_upper()]
-	casino_btn.text = "[CASINO.EXE // СПОРЫ: %d]" % GameState.spores
+	ach_btn.text = "[ ДОСТИЖЕНИЯ: %d/%d ]" % [Achievements.unlocked.size(), Achievements.TOTAL]
 
 	coins_lbl.text = "ERR_0x00" if greed else GameState.coins.format_ru()
 	var total_cps: BigNum = GameState.get_effective_cps()
@@ -1166,3 +1191,63 @@ func _refresh_ui() -> void:
 
 	if casino_overlay.visible:
 		_refresh_casino_ui()
+
+# ---------------------------------------------------------------- ПАУЗА / ВЫХОД В МЕНЮ
+
+func _build_pause_overlay() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 22
+	add_child(layer)
+
+	pause_overlay = ColorRect.new()
+	pause_overlay.color = Color(0.0, 0.0, 0.0, 0.82)
+	pause_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_overlay.visible = false
+	layer.add_child(pause_overlay)
+
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pause_overlay.add_child(cc)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color("#080103"), 2))
+	cc.add_child(panel)
+
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(360.0, 0.0)
+	vb.add_theme_constant_override("separation", 14)
+	panel.add_child(vb)
+
+	var t := Label.new()
+	t.text = "/SYS/PAUSE // ПАУЗА"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_color_override("font_color", Color("#ff1e38"))
+	vb.add_child(t)
+
+	var resume := Button.new()
+	resume.text = "[ ПРОДОЛЖИТЬ ]"
+	_style_button(resume, true)
+	resume.pressed.connect(func() -> void: _set_paused(false))
+	vb.add_child(resume)
+
+	var to_menu := Button.new()
+	to_menu.text = "[ В ГЛАВНОЕ МЕНЮ ]"
+	_style_button(to_menu)
+	to_menu.pressed.connect(_go_to_menu)
+	vb.add_child(to_menu)
+
+	var hint := Label.new()
+	hint.text = "Прогресс сохраняется автоматически."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_color_override("font_color", Color("#926870"))
+	vb.add_child(hint)
+
+func _set_paused(on: bool) -> void:
+	pause_overlay.visible = on
+	tick_timer.paused = on
+	if on:
+		GameState.save_game()
+
+func _go_to_menu() -> void:
+	GameState.save_game()
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

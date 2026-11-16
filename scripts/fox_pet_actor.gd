@@ -1,13 +1,21 @@
 class_name FoxPetActor
 extends Control
 
-var pos_x: float = 420.0
-var target_x: float = 760.0
-var dir: int = 1
-var walking: bool = true
-var walk_phase: float = 0.0
-var pause_timer: float = 0.0
-var ear_twitch_timer: float = 0.0
+# Лис сидит на левом краю кнопки-печати. Назначается из main.gd: fox_pet.anchor = sigil_btn
+var anchor: Control
+
+# Положение относительно прямоугольника кнопки (подстройте под свой макет)
+const SIT_DX := -112.0            # влево от левого края кнопки
+const SIT_Y_FRAC := 0.58          # доля высоты кнопки, на которой сидит лис
+const SIT_DY := -72.0
+
+var _t: float = 0.0
+var _hop: float = 0.0
+var _wake: float = 0.0
+var _ear_twitch: float = 0.0
+var _blink: float = 0.0
+var _blink_cd: float = 3.0
+var _was_sleeping: bool = false
 
 var bubble: PanelContainer
 var bubble_lbl: Label
@@ -25,150 +33,144 @@ func _ready() -> void:
 	add_child(bubble)
 
 	bubble_lbl = Label.new()
-	bubble_lbl.text = "Жми на красную печать в центре! Нам нужна энергия!"
+	bubble_lbl.text = "Жми на красную печать! Нам нужна энергия!"
 	bubble_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bubble_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bubble_lbl.add_theme_color_override("font_color", Color("#ecd9dc"))
 	bubble_lbl.add_theme_font_size_override("font_size", 12)
 	bubble.add_child(bubble_lbl)
 
-	Fox.say.connect(func(txt: String) -> void:
-		bubble_lbl.text = txt
-	)
-	Casino.ear_twitch.connect(func() -> void:
-		ear_twitch_timer = 0.45
-	)
+	Fox.say.connect(func(txt: String) -> void: bubble_lbl.text = txt)
+	Casino.ear_twitch.connect(func() -> void: _ear_twitch = 0.45)
+
+# Реакция на клик игрока по кнопке (вызывается из main.gd)
+func react(is_crit: bool = false) -> void:
+	_hop = 1.0
+	if is_crit:
+		_ear_twitch = 0.35
+	Fox.on_activity()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		# Проверяем клик в область ушей/головы (верхняя половина спрайта)
+		_hop = 1.0
 		if event.position.y <= 78.0 and Casino.on_fox_ear_clicked():
 			return
 		Fox.on_poke()
 
 func _process(delta: float) -> void:
+	_t += delta
 	bubble.visible = not Fox.muted
-	if ear_twitch_timer > 0.0:
-		ear_twitch_timer -= delta
+	_hop = maxf(0.0, _hop - delta * 3.5)
+	_wake = maxf(0.0, _wake - delta)
+	_ear_twitch = maxf(0.0, _ear_twitch - delta)
+	_blink = maxf(0.0, _blink - delta)
+	_blink_cd -= delta
+	if _blink_cd <= 0.0:
+		_blink = 0.12
+		_blink_cd = randf_range(2.0, 5.0)
 
-	var vp_w := get_viewport_rect().size.x
-	var min_x := 80.0
-	var max_x := maxf(240.0, vp_w - 210.0)
+	var sleeping := Fox.state == Fox.S.SLEEPING
+	if _was_sleeping and not sleeping:
+		_wake = 0.6
+		_hop = 1.0
+	_was_sleeping = sleeping
 
-	if Fox.state == Fox.S.SLEEPING:
-		walking = false
-	elif pause_timer > 0.0:
-		walking = false
-		pause_timer -= delta
-		if pause_timer <= 0.0:
-			target_x = randf_range(min_x, max_x)
+	var vp := get_viewport_rect().size
+	var target: Vector2
+	if anchor != null and is_instance_valid(anchor):
+		var r := anchor.get_global_rect()
+		target = Vector2(r.position.x + SIT_DX, r.position.y + r.size.y * SIT_Y_FRAC + SIT_DY)
 	else:
-		var diff := target_x - pos_x
-		if absf(diff) > 5.0:
-			walking = true
-			dir = 1 if diff > 0.0 else -1
-			pos_x += float(dir) * 85.0 * delta
-		else:
-			walking = false
-			pause_timer = randf_range(1.6, 3.4)
+		target = Vector2(120.0, vp.y - 142.0)
+	position = position.lerp(target, minf(1.0, delta * 10.0))
 
-	pos_x = clampf(pos_x, min_x, max_x)
-	position = Vector2(pos_x, get_viewport_rect().size.y - 142.0)
-
-	if walking:
-		walk_phase += delta * 11.0
-	else:
-		walk_phase += delta * 2.5
-
-	# Не даём облачку диалога вылезать за края окна
+	# облачко не вылезает за края окна
 	var shift := 0.0
-	if pos_x - 65.0 < 12.0:
-		shift = 12.0 - (pos_x - 65.0)
-	elif pos_x + 195.0 > vp_w - 12.0:
-		shift = (vp_w - 12.0) - (pos_x + 195.0)
+	if position.x - 65.0 < 12.0:
+		shift = 12.0 - (position.x - 65.0)
+	elif position.x + 195.0 > vp.x - 12.0:
+		shift = (vp.x - 12.0) - (position.x + 195.0)
 	bubble.position.x = -65.0 + shift
-
 	queue_redraw()
 
-func _xf(pt: Vector2, bob_y: float) -> Vector2:
-	var cx := 65.0
-	var rx := cx + (pt.x - cx) * float(dir)
-	return Vector2(rx, pt.y + bob_y)
+func _pt(v: Vector2, bob: float) -> Vector2:
+	return v + Vector2(0.0, bob)
 
-func _xpoly(pts: PackedVector2Array, bob_y: float) -> PackedVector2Array:
+func _poly(pts: PackedVector2Array, bob: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	out.resize(pts.size())
 	for i in range(pts.size()):
-		out[i] = _xf(pts[i], bob_y)
+		out[i] = _pt(pts[i], bob)
 	return out
+
+func _shape(pts: PackedVector2Array, fill: Color, line: Color, w: float) -> void:
+	draw_colored_polygon(pts, fill)
+	draw_polyline(pts + PackedVector2Array([pts[0]]), line, w, true)
 
 func _draw() -> void:
 	var tier := Economy.tier_of(Economy.phase_of(GameState))
-	var sleeping := (Fox.state == Fox.S.SLEEPING)
-	var bob_y := 8.0 if sleeping else (-absf(sin(walk_phase)) * (4.5 if walking else 1.5))
+	var sleeping := Fox.state == Fox.S.SLEEPING
+	var calm: bool = FoxSettings.reduce_noise
+	var breathe := sin(_t * (1.2 if sleeping else 2.2)) * (0.8 if calm else 1.6)
+	var body_bob := breathe + (4.0 if sleeping else 0.0) - sin(_hop * PI) * 16.0
+	var head_bob := body_bob + (5.0 if sleeping else 0.0)
+	var sway := sin(_t * 1.5) * (2.0 if calm else 6.0)
+	var red := Color("#ff1e38")
 
-	# Тень на полу
-	draw_circle(Vector2(65.0, 126.0), 22.0, Color(0, 0, 0, 0.7))
+	# тень
+	draw_circle(Vector2(65.0, 128.0), 24.0, Color(0, 0, 0, 0.7))
 
-	# Хвост (на старших тирах добавляются дополнительные хвосты)
-	var tail_sway := sin(walk_phase * 0.7) * 5.0
-	var tail := _xpoly(PackedVector2Array([
-		Vector2(48, 92), Vector2(18, 76 + tail_sway), Vector2(22, 52 + tail_sway), Vector2(46, 80)
-	]), bob_y)
-	draw_colored_polygon(tail, Color("#1e0408"))
-	draw_polyline(tail + PackedVector2Array([tail[0]]), Color("#ff1e38"), 2.0, true)
-
+	# хвост свисает вниз с края кнопки и покачивается
+	var tail := _poly(PackedVector2Array([
+		Vector2(48, 100), Vector2(26 + sway * 0.4, 112), Vector2(10 + sway, 132), Vector2(22 + sway, 136), Vector2(40, 116)
+	]), body_bob)
+	_shape(tail, Color("#1e0408"), red, 2.0)
 	if tier >= 3:
-		var tail2 := _xpoly(PackedVector2Array([
-			Vector2(48, 86), Vector2(24, 48 - tail_sway), Vector2(36, 30 - tail_sway), Vector2(50, 74)
-		]), bob_y)
-		draw_colored_polygon(tail2, Color("#160205"))
-		draw_polyline(tail2 + PackedVector2Array([tail2[0]]), Color("#c0392b"), 1.6, true)
+		var tail2 := _poly(PackedVector2Array([
+			Vector2(50, 96), Vector2(30, 104 - sway * 0.3), Vector2(16, 120 - sway), Vector2(30, 122 - sway), Vector2(46, 108)
+		]), body_bob)
+		_shape(tail2, Color("#160205"), Color("#c0392b"), 1.6)
 
-	# Лапки
-	var leg_off := sin(walk_phase) * (5.0 if walking else 0.0)
-	draw_rect(Rect2(_xf(Vector2(50 + leg_off, 96), bob_y), Vector2(7, 24)), Color("#160205"), true)
-	draw_rect(Rect2(_xf(Vector2(68 - leg_off, 96), bob_y), Vector2(7, 24)), Color("#240408"), true)
+	# туловище (сидит)
+	var body := _poly(PackedVector2Array([Vector2(46, 70), Vector2(84, 70), Vector2(92, 118), Vector2(40, 118)]), body_bob)
+	_shape(body, Color("#180306"), red if tier >= 2 else Color("#c0392b"), 2.0)
 
-	# Туловище-накидка
-	var body := _xpoly(PackedVector2Array([
-		Vector2(48, 68), Vector2(82, 68), Vector2(87, 98), Vector2(43, 98)
-	]), bob_y)
-	draw_colored_polygon(body, Color("#180306"))
-	draw_polyline(body + PackedVector2Array([body[0]]), Color("#ff1e38") if tier >= 2 else Color("#c0392b"), 2.0, true)
+	# передние лапки
+	draw_rect(Rect2(_pt(Vector2(54, 104), body_bob), Vector2(8, 16)), Color("#240408"), true)
+	draw_rect(Rect2(_pt(Vector2(68, 104), body_bob), Vector2(8, 16)), Color("#240408"), true)
 
-	# Левое ухо
-	var ear_l := _xpoly(PackedVector2Array([Vector2(40, 20), Vector2(57, 38), Vector2(42, 52)]), bob_y)
-	draw_colored_polygon(ear_l, Color("#1a0205"))
-	draw_polyline(ear_l + PackedVector2Array([ear_l[0]]), Color("#ff1e38"), 2.2, true)
+	# уши
+	_shape(_poly(PackedVector2Array([Vector2(40, 20), Vector2(57, 38), Vector2(42, 52)]), head_bob),
+		Color("#1a0205"), red, 2.2)
+	var tw := Vector2(randf_range(-5.0, 5.0), randf_range(-6.0, 3.0)) if _ear_twitch > 0.0 else Vector2.ZERO
+	var perk := Vector2(0.0, -6.0) if _wake > 0.0 else Vector2.ZERO
+	_shape(_poly(PackedVector2Array([Vector2(90, 20) + tw + perk, Vector2(73, 38), Vector2(88, 52)]), head_bob),
+		Color("#2d050b") if _ear_twitch > 0.0 else Color("#1a0205"),
+		Color("#d6ff3a") if _ear_twitch > 0.0 else red, 2.4)
 
-	# Правое ухо с пластырем (дёргается при шулерстве в Казино!)
-	var twitch_off := Vector2(randf_range(-5.0, 5.0), randf_range(-6.0, 3.0)) if ear_twitch_timer > 0.0 else Vector2.ZERO
-	var ear_col := Color("#d6ff3a") if ear_twitch_timer > 0.0 else Color("#ff1e38")
-	var ear_r := _xpoly(PackedVector2Array([
-		Vector2(90, 20) + twitch_off, Vector2(73, 38), Vector2(88, 52)
-	]), bob_y)
-	draw_colored_polygon(ear_r, Color("#2d050b") if ear_twitch_timer > 0.0 else Color("#1a0205"))
-	draw_polyline(ear_r + PackedVector2Array([ear_r[0]]), ear_col, 2.4, true)
+	# морда
+	_shape(_poly(PackedVector2Array([Vector2(42, 52), Vector2(65, 76), Vector2(88, 52), Vector2(73, 38), Vector2(57, 38)]), head_bob),
+		Color("#120103"), Color.WHITE if tier >= 4 else red, 2.2)
 
-	# Пятиугольная морда
-	var head := _xpoly(PackedVector2Array([
-		Vector2(42, 52), Vector2(65, 76), Vector2(88, 52), Vector2(73, 38), Vector2(57, 38)
-	]), bob_y)
-	draw_colored_polygon(head, Color("#120103"))
-	draw_polyline(head + PackedVector2Array([head[0]]), Color.WHITE if tier >= 4 else Color("#ff1e38"), 2.2, true)
-
-	# Глаза и третий глаз на Тире 4
-	if sleeping:
-		draw_line(_xf(Vector2(51, 53), bob_y), _xf(Vector2(59, 54), bob_y), Color("#926870"), 2.0)
-		draw_line(_xf(Vector2(71, 54), bob_y), _xf(Vector2(79, 53), bob_y), Color("#926870"), 2.0)
+	# глаза: следят за курсором
+	if sleeping or _blink > 0.0:
+		draw_line(_pt(Vector2(51, 53), head_bob), _pt(Vector2(59, 54), head_bob), Color("#926870"), 2.0)
+		draw_line(_pt(Vector2(71, 54), head_bob), _pt(Vector2(79, 53), head_bob), Color("#926870"), 2.0)
 	else:
-		var eye_col := Color("#39ff88") if ear_twitch_timer > 0.0 else Color("#ff1e38")
-		draw_circle(_xf(Vector2(55, 53), bob_y), 3.2, eye_col)
-		draw_circle(_xf(Vector2(75, 53), bob_y), 3.2, eye_col)
+		var head_global := global_position + Vector2(65.0, 53.0 + head_bob)
+		var to_mouse := get_global_mouse_position() - head_global
+		var look := to_mouse.normalized() * clampf(to_mouse.length() / 140.0, 0.0, 1.0) * 1.9
+		var pup := Color("#39ff88") if _ear_twitch > 0.0 else red
+		for ex: float in [55.0, 75.0]:
+			var ec := _pt(Vector2(ex, 53.0), head_bob)
+			draw_circle(ec, 4.0, Color.WHITE)
+			draw_circle(ec + look, 2.3, pup)
 	if tier >= 4:
-		draw_circle(_xf(Vector2(65, 38), bob_y), 3.0, Color("#ff1e38"))
+		draw_circle(_pt(Vector2(65, 38), head_bob), 3.0, red)
 
-	# Носик
-	var nose := _xpoly(PackedVector2Array([Vector2(61, 63), Vector2(69, 63), Vector2(65, 68)]), bob_y)
-	draw_colored_polygon(nose, Color.WHITE)
+	# носик
+	draw_colored_polygon(_poly(PackedVector2Array([Vector2(61, 63), Vector2(69, 63), Vector2(65, 68)]), head_bob), Color.WHITE)
+
+	# восклицание при пробуждении
+	if _wake > 0.0:
+		draw_string(get_theme_default_font(), _pt(Vector2(94, 22), head_bob), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color("#d6ff3a"))
