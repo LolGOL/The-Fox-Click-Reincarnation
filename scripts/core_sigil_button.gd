@@ -3,10 +3,30 @@ extends Control
 
 signal clicked(global_pos: Vector2)
 
+const SIGIL_CENTER := Vector2(40.0, 42.0)
+const SIGIL_SCALE := 0.92
+
+var POLY_TRI_DOWN := PackedVector2Array([Vector2(40, 75), Vector2(11, 25), Vector2(69, 25)])
+var POLY_TRI_UP := PackedVector2Array([Vector2(40, 9), Vector2(14, 57), Vector2(66, 57)])
+var POLY_HORN_L := PackedVector2Array([Vector2(21, 25), Vector2(9, 13), Vector2(13, 5), Vector2(25, 21)])
+var POLY_HORN_R := PackedVector2Array([Vector2(59, 25), Vector2(71, 13), Vector2(67, 5), Vector2(55, 21)])
+var POLY_EAR_L := PackedVector2Array([Vector2(15, 16), Vector2(31, 31), Vector2(17, 43)])
+var POLY_EAR_R := PackedVector2Array([Vector2(65, 16), Vector2(49, 31), Vector2(63, 43)])
+var POLY_FACE := PackedVector2Array([Vector2(17, 43), Vector2(40, 68), Vector2(63, 43), Vector2(49, 31), Vector2(31, 31)])
+var POLY_EYE_L := PackedVector2Array([Vector2(23, 42), Vector2(35, 45), Vector2(27, 48)])
+var POLY_EYE_R := PackedVector2Array([Vector2(57, 42), Vector2(45, 45), Vector2(53, 48)])
+var POLY_FANG_L := PackedVector2Array([Vector2(32, 59), Vector2(34.5, 66), Vector2(37, 61)])
+var POLY_FANG_R := PackedVector2Array([Vector2(48, 59), Vector2(45.5, 66), Vector2(43, 61)])
+var POLY_THIRD_EYE := PackedVector2Array([Vector2(40, 21), Vector2(46, 27), Vector2(40, 33), Vector2(34, 27)])
+var POLY_NOSE := PackedVector2Array([Vector2(36, 54), Vector2(44, 54), Vector2(40, 59)])
+var POLY_MYC_L := PackedVector2Array([Vector2(17, 43), Vector2(10, 35), Vector2(12, 26)])
+var POLY_MYC_R := PackedVector2Array([Vector2(63, 43), Vector2(70, 35), Vector2(68, 26)])
+
 var tier: int = 1
 var infection_pct: int = 0
 var press_anim: float = 0.0
 var is_pressed: bool = false
+var hovered: bool = false
 var time_acc: float = 0.0
 var crit_glow: float = 0.0
 
@@ -16,6 +36,11 @@ var click_sparks: Array[Dictionary] = []
 func _ready() -> void:
 	custom_minimum_size = Vector2(216, 216)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	mouse_entered.connect(func() -> void: hovered = true)
+	mouse_exited.connect(func() -> void:
+		hovered = false
+		is_pressed = false
+	)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -55,36 +80,55 @@ func _process(delta: float) -> void:
 	press_anim = lerpf(press_anim, target, minf(1.0, delta * 28.0))
 	crit_glow = maxf(0.0, crit_glow - delta * 3.5)
 
-	for i in range(shockwaves.size() - 1, -1, -1):
+	var i := shockwaves.size() - 1
+	while i >= 0:
 		var sw: Dictionary = shockwaves[i]
 		sw["r"] = lerpf(float(sw["r"]), float(sw["max_r"]), minf(1.0, delta * 9.0))
 		sw["alpha"] = float(sw["alpha"]) - delta * 2.1
 		if float(sw["alpha"]) <= 0.0:
-			shockwaves.remove_at(i)
+			shockwaves[i] = shockwaves[shockwaves.size() - 1]
+			shockwaves.pop_back()
+		i -= 1
 
-	for i in range(click_sparks.size() - 1, -1, -1):
+	i = click_sparks.size() - 1
+	while i >= 0:
 		var sp: Dictionary = click_sparks[i]
 		sp["pos"] = Vector2(sp["pos"]) + Vector2(sp["vel"]) * delta
 		sp["vel"] = Vector2(sp["vel"]) * 0.92
 		sp["life"] = float(sp["life"]) - delta
 		if float(sp["life"]) <= 0.0:
-			click_sparks.remove_at(i)
+			click_sparks[i] = click_sparks[click_sparks.size() - 1]
+			click_sparks.pop_back()
+		i -= 1
 
 	queue_redraw()
+
+func _to_cap(pt: Vector2, cap_c: Vector2) -> Vector2:
+	return cap_c + (pt - SIGIL_CENTER) * SIGIL_SCALE
+
+func _poly_to_cap(pts: PackedVector2Array, cap_c: Vector2, close_loop: bool = false) -> PackedVector2Array:
+	var n := pts.size()
+	var out := PackedVector2Array()
+	out.resize(n + (1 if close_loop else 0))
+	for idx in range(n):
+		out[idx] = cap_c + (pts[idx] - SIGIL_CENTER) * SIGIL_SCALE
+	if close_loop:
+		out[n] = out[0]
+	return out
 
 func _draw() -> void:
 	var c := size * 0.5
 	var bezel_r := 92.0
 	var cap_r := 72.0
 
-	# 1. Ударные волны позади кнопки
+	# 1. Ударные волны
 	for sw: Dictionary in shockwaves:
 		var col: Color = sw["color"]
 		col.a = clampf(float(sw["alpha"]), 0.0, 1.0)
 		draw_arc(c, float(sw["r"]), 0.0, TAU, 48, col, float(sw["width"]), true)
 
-	# 2. Основание-безель кнопки (меняется по тирам 1..4)
-	draw_circle(c + Vector2(0, 11), bezel_r, Color(0.05, 0.01, 0.01, 0.95))
+	# 2. Основание-безель кнопки (эволюция по тирам 1..4)
+	draw_circle(c + Vector2(0.0, 11.0), bezel_r, Color(0.05, 0.01, 0.01, 0.95))
 	var bezel_bg := Color("#240c09")
 	var bezel_border := Color("#8c3b2b")
 	if tier == 2:
@@ -100,82 +144,67 @@ func _draw() -> void:
 	draw_circle(c, bezel_r, bezel_bg)
 	draw_arc(c, bezel_r, 0.0, TAU, 64, bezel_border, 3.5, true)
 
-	# Вращающееся оккультное кольцо на 3-4 тирах
 	if tier >= 3:
 		var segs := 18
+		var step := TAU / float(segs)
 		for s in range(segs):
-			var a0 := time_acc * 0.7 + float(s) * (TAU / float(segs))
-			var a1 := a0 + (TAU / float(segs)) * 0.55
-			draw_arc(c, bezel_r - 7.0, a0, a1, 6, Color("#ff8a98"), 1.8, true)
+			var a0 := time_acc * 0.7 + float(s) * step
+			draw_arc(c, bezel_r - 7.0, a0, a0 + step * 0.55, 6, Color("#ff8a98"), 1.8, true)
 
-	# 3. Подвижная 3D-шляпка кнопки
+	# 3. Подвижная 3D-шляпка
 	var cap_y := lerpf(-6.0, 4.0, press_anim)
-	var cap_c := c + Vector2(0, cap_y)
-	draw_circle(cap_c + Vector2(0, 8.0 * (1.0 - press_anim)), cap_r, Color("#4d050f"))
+	var cap_c := c + Vector2(0.0, cap_y)
+	draw_circle(cap_c + Vector2(0.0, 8.0 * (1.0 - press_anim)), cap_r, Color("#4d050f"))
 
-	var cap_col := Color("#b81126") if get_rect().has_point(get_local_mouse_position()) else Color("#9e0d20")
+	var cap_col := Color("#b81126") if hovered else Color("#9e0d20")
 	if tier >= 4:
 		cap_col = Color("#c8142c")
 	cap_col = cap_col.lerp(Color.WHITE, crit_glow * 0.65)
 	draw_circle(cap_c, cap_r, cap_col)
 	draw_arc(cap_c, cap_r, 0.0, TAU, 64, Color.WHITE if (tier >= 4 or crit_glow > 0.2) else Color("#ff5268"), 3.0, true)
 
-	# 4. Векторная печать Лиса внутри кнопки (#foxSigil)
-	var sc := 0.92
-	var p := func(x: float, y: float) -> Vector2:
-		return cap_c + Vector2((x - 40.0) * sc, (y - 42.0) * sc)
-
+	# 4. Векторная печать Лиса
 	if tier >= 3:
-		draw_polyline(PackedVector2Array([p.call(40, 75), p.call(11, 25), p.call(69, 25), p.call(40, 75)]), Color(1, 0.6, 0.65, 0.65), 1.4, true)
-		draw_colored_polygon(PackedVector2Array([p.call(21, 25), p.call(9, 13), p.call(13, 5), p.call(25, 21)]), Color("#2b0309"))
-		draw_polyline(PackedVector2Array([p.call(21, 25), p.call(9, 13), p.call(13, 5), p.call(25, 21)]), Color.WHITE, 1.8, true)
-		draw_colored_polygon(PackedVector2Array([p.call(59, 25), p.call(71, 13), p.call(67, 5), p.call(55, 21)]), Color("#2b0309"))
-		draw_polyline(PackedVector2Array([p.call(59, 25), p.call(71, 13), p.call(67, 5), p.call(55, 21)]), Color.WHITE, 1.8, true)
+		draw_polyline(_poly_to_cap(POLY_TRI_DOWN, cap_c, true), Color(1.0, 0.6, 0.65, 0.65), 1.4, true)
+		draw_colored_polygon(_poly_to_cap(POLY_HORN_L, cap_c), Color("#2b0309"))
+		draw_polyline(_poly_to_cap(POLY_HORN_L, cap_c, true), Color.WHITE, 1.8, true)
+		draw_colored_polygon(_poly_to_cap(POLY_HORN_R, cap_c), Color("#2b0309"))
+		draw_polyline(_poly_to_cap(POLY_HORN_R, cap_c, true), Color.WHITE, 1.8, true)
 
 	if tier >= 4:
-		draw_polyline(PackedVector2Array([p.call(40, 9), p.call(14, 57), p.call(66, 57), p.call(40, 9)]), Color(1, 1, 1, 0.75), 1.3, true)
+		draw_polyline(_poly_to_cap(POLY_TRI_UP, cap_c, true), Color(1.0, 1.0, 1.0, 0.75), 1.3, true)
 
-	# Уши и пятиугольная морда
-	var ear_l := PackedVector2Array([p.call(15, 16), p.call(31, 31), p.call(17, 43)])
-	var ear_r := PackedVector2Array([p.call(65, 16), p.call(49, 31), p.call(63, 43)])
-	var face := PackedVector2Array([p.call(17, 43), p.call(40, 68), p.call(63, 43), p.call(49, 31), p.call(31, 31)])
+	draw_colored_polygon(_poly_to_cap(POLY_EAR_L, cap_c), Color("#1a0205"))
+	draw_polyline(_poly_to_cap(POLY_EAR_L, cap_c, true), Color.WHITE, 2.0, true)
+	draw_colored_polygon(_poly_to_cap(POLY_EAR_R, cap_c), Color("#1a0205"))
+	draw_polyline(_poly_to_cap(POLY_EAR_R, cap_c, true), Color.WHITE, 2.0, true)
+	draw_colored_polygon(_poly_to_cap(POLY_FACE, cap_c), Color("#120103"))
+	draw_polyline(_poly_to_cap(POLY_FACE, cap_c, true), Color.WHITE, 2.2, true)
 
-	draw_colored_polygon(ear_l, Color("#1a0205"))
-	draw_polyline(ear_l + PackedVector2Array([ear_l[0]]), Color.WHITE, 2.0, true)
-	draw_colored_polygon(ear_r, Color("#1a0205"))
-	draw_polyline(ear_r + PackedVector2Array([ear_r[0]]), Color.WHITE, 2.0, true)
-	draw_colored_polygon(face, Color("#120103"))
-	draw_polyline(face + PackedVector2Array([face[0]]), Color.WHITE, 2.2, true)
-
-	# Глаза и клыки по тирам
 	if tier == 1:
-		draw_circle(p.call(31, 44), 2.8, Color.WHITE)
-		draw_circle(p.call(49, 44), 2.8, Color.WHITE)
+		draw_circle(_to_cap(Vector2(31, 44), cap_c), 2.8, Color.WHITE)
+		draw_circle(_to_cap(Vector2(49, 44), cap_c), 2.8, Color.WHITE)
 	else:
-		draw_colored_polygon(PackedVector2Array([p.call(23, 42), p.call(35, 45), p.call(27, 48)]), Color.WHITE)
-		draw_colored_polygon(PackedVector2Array([p.call(57, 42), p.call(45, 45), p.call(53, 48)]), Color.WHITE)
-		draw_colored_polygon(PackedVector2Array([p.call(32, 59), p.call(34.5, 66), p.call(37, 61)]), Color.WHITE)
-		draw_colored_polygon(PackedVector2Array([p.call(48, 59), p.call(45.5, 66), p.call(43, 61)]), Color.WHITE)
+		draw_colored_polygon(_poly_to_cap(POLY_EYE_L, cap_c), Color.WHITE)
+		draw_colored_polygon(_poly_to_cap(POLY_EYE_R, cap_c), Color.WHITE)
+		draw_colored_polygon(_poly_to_cap(POLY_FANG_L, cap_c), Color.WHITE)
+		draw_colored_polygon(_poly_to_cap(POLY_FANG_R, cap_c), Color.WHITE)
 
-	# Третий глаз на Тире 4
 	if tier >= 4:
-		var eye3 := PackedVector2Array([p.call(40, 21), p.call(46, 27), p.call(40, 33), p.call(34, 27)])
-		draw_colored_polygon(eye3, Color("#1a0004"))
-		draw_polyline(eye3 + PackedVector2Array([eye3[0]]), Color.WHITE, 1.5, true)
-		draw_circle(p.call(40, 27), 2.0, Color("#ff1e38"))
+		draw_colored_polygon(_poly_to_cap(POLY_THIRD_EYE, cap_c), Color("#1a0004"))
+		draw_polyline(_poly_to_cap(POLY_THIRD_EYE, cap_c, true), Color.WHITE, 1.5, true)
+		draw_circle(_to_cap(Vector2(40, 27), cap_c), 2.0, Color("#ff1e38"))
 
-	# Носик
-	draw_colored_polygon(PackedVector2Array([p.call(36, 54), p.call(44, 54), p.call(40, 59)]), Color.WHITE)
+	draw_colored_polygon(_poly_to_cap(POLY_NOSE, cap_c), Color.WHITE)
 
-	# Нити мицелия на печати при заражении > 0
 	if infection_pct > 0:
 		var m_col := Color(1.0, 0.8, 0.84, clampf(float(infection_pct) / 100.0, 0.2, 0.95))
-		draw_polyline(PackedVector2Array([p.call(17, 43), p.call(10, 35), p.call(12, 26)]), m_col, 1.6, true)
-		draw_polyline(PackedVector2Array([p.call(63, 43), p.call(70, 35), p.call(68, 26)]), m_col, 1.6, true)
-		draw_circle(p.call(12, 26), 2.2, Color.WHITE)
-		draw_circle(p.call(68, 26), 2.2, Color.WHITE)
+		draw_polyline(_poly_to_cap(POLY_MYC_L, cap_c), m_col, 1.6, true)
+		draw_polyline(_poly_to_cap(POLY_MYC_R, cap_c), m_col, 1.6, true)
+		draw_circle(_to_cap(Vector2(12, 26), cap_c), 2.2, Color.WHITE)
+		draw_circle(_to_cap(Vector2(68, 26), cap_c), 2.2, Color.WHITE)
 
-	# 5. Искры от клика
+	# 5. Искры
 	for sp: Dictionary in click_sparks:
 		var scol: Color = sp["color"]
 		scol.a = clampf(float(sp["life"]) / float(sp["max_life"]), 0.0, 1.0)
