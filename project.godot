@@ -11,13 +11,17 @@ config_version=5
 [application]
 
 config/name="LissOS"
+run/main_scene="uid://bbdafl83t80yp"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [display]
 
+window/size/viewport_width=1600
+window/size/viewport_height=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+window/vsync/vsync_mode=2
 
 [physics]
 
