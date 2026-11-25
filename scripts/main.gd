@@ -1,5 +1,8 @@
 extends Node2D
 
+const DEAL_MODAL_SCENE := preload("res://scenes/deal_modal.tscn")
+const DealModal := preload("res://scripts/deal_modal.gd")
+
 const SIGIL_TITLES: Array[String] = [
 	"SIGIL LV.1 // РЖАВАЯ КНОПКА",
 	"SIGIL LV.2 // ХИЩНЫЙ ТЕРМИНАЛ",
@@ -12,13 +15,7 @@ const HANDLE_W := 38.0
 const TOTAL_DRAWER_W := DRAWER_PANEL_W + HANDLE_W
 
 var sb_btn_normal: StyleBoxFlat
-var sb_btn_hover: StyleBoxFlat
-var sb_btn_pressed: StyleBoxFlat
-var sb_btn_disabled: StyleBoxFlat
 var sb_btn_active: StyleBoxFlat
-var sb_btn_acid: StyleBoxFlat
-var sb_bar_bg: StyleBoxFlat
-var sb_bar_fill: StyleBoxFlat
 
 var ui_root: VBoxContainer
 var vfx: VfxLayer
@@ -66,13 +63,7 @@ var amt_btns: Dictionary = {}
 var last_up_sig: String = ""
 
 # Модальные окна
-var deal_overlay: ColorRect
-var deal_name_lbl: Label
-var deal_rew_lbl: Label
-var deal_cur_lbl: Label
-var deal_bar: ProgressBar
-var current_deal: Dictionary = {}
-var deal_left: float = 0.0
+var deal_modal: DealModal
 
 var casino_overlay: ColorRect
 var casino_status_lbl: Label
@@ -223,13 +214,6 @@ func _process(delta: float) -> void:
 	coins_lbl.modulate.a = (0.76 + 0.24 * sin(now * 16.0)) if (inf >= 40 or Mutations.has_glitch("echo")) else 1.0
 	_tick_fake_button(delta, inf)
 
-	if deal_overlay.visible:
-		deal_left -= delta
-		deal_bar.value = clampf(deal_left / 30.0, 0.0, 1.0)
-		if deal_left <= 0.0:
-			deal_overlay.visible = false
-			voice_lbl.text = "> Fox OS: Ты молчал. Я записал это как отказ."
-
 	flash_red_val = maxf(0.0, flash_red_val - delta * 1.4)
 	if crt_mat:
 		var inf_f := float(inf) / 100.0
@@ -241,7 +225,7 @@ func _process(delta: float) -> void:
 		crt_mat.set_shader_parameter("flash_red", flash_red_val)
 
 func _update_drawers(delta: float) -> void:
-	var modal_busy := deal_overlay.visible or debug_overlay.visible or casino_overlay.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
+	var modal_busy := deal_modal.visible or debug_overlay.visible or casino_overlay.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
 	var mpos := get_global_mouse_position()
 
 	var l_hover := not modal_busy and left_drawer.get_global_rect().has_point(mpos)
@@ -258,33 +242,13 @@ func _update_drawers(delta: float) -> void:
 
 func _init_shared_styles() -> void:
 	sb_btn_normal = FoxTheme.panel_style(Color("#c0392b"), Color("#190609"), 2)
-	sb_btn_hover = FoxTheme.panel_style(Color("#ff1e38"), Color("#2d0a11"), 2)
-	sb_btn_pressed = FoxTheme.panel_style(Color("#ff1e38"), Color("#c0392b"), 2)
-	sb_btn_disabled = FoxTheme.panel_style(Color("#3a0b10"), Color("#0d0305"), 2)
 	sb_btn_active = FoxTheme.panel_style(Color("#ff5266"), Color("#c0392b"), 2)
-	sb_btn_acid = FoxTheme.panel_style(Color("#d6ff3a"), Color("#161c04"), 2)
-
-	sb_bar_bg = StyleBoxFlat.new()
-	sb_bar_bg.bg_color = Color("#050102")
-	sb_bar_bg.border_color = Color("#4a0e16")
-	sb_bar_bg.set_border_width_all(2)
-
-	sb_bar_fill = StyleBoxFlat.new()
-	sb_bar_fill.bg_color = Color("#c0392b")
 
 func _style_button(btn: Button, is_acid: bool = false) -> void:
-	btn.add_theme_stylebox_override("normal", sb_btn_acid if is_acid else sb_btn_normal)
-	btn.add_theme_stylebox_override("hover", sb_btn_hover)
-	btn.add_theme_stylebox_override("pressed", sb_btn_pressed)
-	btn.add_theme_stylebox_override("disabled", sb_btn_disabled)
-	btn.add_theme_color_override("font_color", Color("#d6ff3a") if is_acid else Color("#ff1e38"))
-	btn.add_theme_color_override("font_hover_color", Color("#ff5266"))
-	btn.add_theme_color_override("font_pressed_color", Color.BLACK)
-	btn.add_theme_color_override("font_disabled_color", Color("#6e3b42"))
+	FoxTheme.apply_button(btn, is_acid)
 
 func _style_progress_bar(bar: ProgressBar) -> void:
-	bar.add_theme_stylebox_override("background", sb_bar_bg)
-	bar.add_theme_stylebox_override("fill", sb_bar_fill)
+	FoxTheme.apply_progress_bar(bar)
 
 func _build_drawer_handle(vertical_title: String, is_left: bool) -> PanelContainer:
 	var handle := PanelContainer.new()
@@ -666,74 +630,14 @@ func _build_modals() -> void:
 	add_child(modal_layer)
 
 	# 1. Окно Сделки с Дьяволом
-	deal_overlay = ColorRect.new()
-	deal_overlay.color = Color(0.0, 0.0, 0.0, 0.84)
-	deal_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	deal_overlay.visible = false
-	modal_layer.add_child(deal_overlay)
-
-	var cc := CenterContainer.new()
-	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	deal_overlay.add_child(cc)
-
-	var box := PanelContainer.new()
-	box.custom_minimum_size = Vector2(540, 0)
-	box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color.BLACK, 4))
-	cc.add_child(box)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 12)
-	box.add_child(vb)
-
-	var dtitle := Label.new()
-	dtitle.text = "СИСТЕМНЫЙ ПЕРЕХВАТ // СДЕЛКА С ДЬЯВОЛОМ"
-	dtitle.add_theme_color_override("font_color", Color("#ff1e38"))
-	vb.add_child(dtitle)
-
-	deal_name_lbl = Label.new()
-	deal_name_lbl.add_theme_font_size_override("font_size", 22)
-	deal_name_lbl.add_theme_color_override("font_color", Color.WHITE)
-	vb.add_child(deal_name_lbl)
-
-	deal_rew_lbl = Label.new()
-	deal_rew_lbl.add_theme_color_override("font_color", Color("#39ff88"))
-	vb.add_child(deal_rew_lbl)
-
-	deal_cur_lbl = Label.new()
-	deal_cur_lbl.add_theme_color_override("font_color", Color("#ff5266"))
-	vb.add_child(deal_cur_lbl)
-
-	deal_bar = ProgressBar.new()
-	deal_bar.max_value = 1.0
-	deal_bar.value = 1.0
-	deal_bar.show_percentage = false
-	deal_bar.custom_minimum_size = Vector2(0, 12)
-	_style_progress_bar(deal_bar)
-	vb.add_child(deal_bar)
-
-	var btns := HBoxContainer.new()
-	btns.add_theme_constant_override("separation", 10)
-	vb.add_child(btns)
-
-	var yes_btn := Button.new()
-	yes_btn.text = "ПРИНЯТЬ ГРЕХ"
-	yes_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(yes_btn)
-	yes_btn.pressed.connect(func() -> void:
-		deal_overlay.visible = false
-		GameState.apply_deal(current_deal)
+	deal_modal = DEAL_MODAL_SCENE.instantiate() as DealModal
+	modal_layer.add_child(deal_modal)
+	deal_modal.accepted.connect(func(deal: Dictionary) -> void:
+		GameState.apply_deal(deal)
 	)
-	btns.add_child(yes_btn)
-
-	var no_btn := Button.new()
-	no_btn.text = "ОТВЕРГНУТЬ"
-	no_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(no_btn)
-	no_btn.pressed.connect(func() -> void:
-		deal_overlay.visible = false
-		voice_lbl.text = "> Fox OS: Отказ записан. Я запомню."
+	deal_modal.rejected.connect(func(timed_out: bool) -> void:
+		voice_lbl.text = "> Fox OS: Ты молчал. Я записал это как отказ." if timed_out else "> Fox OS: Отказ записан. Я запомню."
 	)
-	btns.add_child(no_btn)
 
 	# 2. Окно Casino.exe (с защитой от F5 и охотой на ухо Лиса)
 	casino_overlay = ColorRect.new()
@@ -1032,16 +936,8 @@ func _open_logs_modal() -> void:
 	logs_overlay.visible = true
 
 func _open_deal(deal: Dictionary) -> void:
-	if deal_overlay.visible:
-		return
-	current_deal = deal
-	deal_left = 30.0
-	deal_name_lbl.text = deal["name"]
-	deal_rew_lbl.text = "НАГРАДА: " + deal["rew"]
-	deal_cur_lbl.text = "ПРОКЛЯТИЕ: " + deal["cur"]
-	deal_bar.value = 1.0
-	deal_overlay.visible = true
-	flash_red_val = 0.75
+	if deal_modal.open(deal):
+		flash_red_val = 0.75
 
 func _on_shop_btn_hover(btn: Button) -> void:
 	var is_eater := float(GameState.fx.get("eater", 0.0)) > 0.0

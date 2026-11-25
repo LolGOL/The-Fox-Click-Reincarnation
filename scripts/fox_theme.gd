@@ -35,3 +35,39 @@ static func apply_scrollbar(sb: VScrollBar) -> void:
 	sb.add_theme_stylebox_override("grabber_highlight", grab_h)
 	sb.add_theme_stylebox_override("grabber_pressed", grab_h)
 	sb.add_theme_stylebox_override("scroll", track)
+
+static var _btn_styles: Dictionary = {}
+static var _bar_bg: StyleBoxFlat
+static var _bar_fill: StyleBoxFlat
+
+static func _ensure_control_styles() -> void:
+	if _btn_styles.is_empty():
+		_btn_styles["normal"] = panel_style(RED_DARK, Color("#190609"), 2)
+		_btn_styles["hover"] = panel_style(RED, Color("#2d0a11"), 2)
+		_btn_styles["pressed"] = panel_style(RED, RED_DARK, 2)
+		_btn_styles["disabled"] = panel_style(Color("#3a0b10"), PANEL_BG, 2)
+		_btn_styles["acid"] = panel_style(ACID, Color("#161c04"), 2)
+	if _bar_bg == null:
+		_bar_bg = StyleBoxFlat.new()
+		_bar_bg.bg_color = Color("#050102")
+		_bar_bg.border_color = LINE
+		_bar_bg.set_border_width_all(2)
+	if _bar_fill == null:
+		_bar_fill = StyleBoxFlat.new()
+		_bar_fill.bg_color = RED_DARK
+
+static func apply_button(btn: Button, is_acid: bool = false) -> void:
+	_ensure_control_styles()
+	btn.add_theme_stylebox_override("normal", _btn_styles["acid"] if is_acid else _btn_styles["normal"])
+	btn.add_theme_stylebox_override("hover", _btn_styles["hover"])
+	btn.add_theme_stylebox_override("pressed", _btn_styles["pressed"])
+	btn.add_theme_stylebox_override("disabled", _btn_styles["disabled"])
+	btn.add_theme_color_override("font_color", ACID if is_acid else RED)
+	btn.add_theme_color_override("font_hover_color", Color("#ff5266"))
+	btn.add_theme_color_override("font_pressed_color", Color.BLACK)
+	btn.add_theme_color_override("font_disabled_color", Color("#6e3b42"))
+
+static func apply_progress_bar(bar: ProgressBar) -> void:
+	_ensure_control_styles()
+	bar.add_theme_stylebox_override("background", _bar_bg)
+	bar.add_theme_stylebox_override("fill", _bar_fill)
