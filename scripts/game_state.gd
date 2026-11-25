@@ -476,3 +476,33 @@ func load_game() -> void:
 	Achievements.load_unlocked(saved_ach)
 	var saved_cas: Dictionary = parsed.get("casino", {})
 	Casino.load_state(saved_cas)
+
+func reset_save_data() -> void:
+	if FileAccess.file_exists(GameData.SAVE_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(GameData.SAVE_PATH))
+	reset_run_data()
+	life_earned = BigNum.zero()
+	max_coins = BigNum.zero()
+	spores = 3
+	shards = 0
+	free_shards = 0
+	spent = 0
+	tree.clear()
+	perks.clear()
+	reinc = 0
+	run_sec = 0.0
+	total_sec = 0.0
+	clicks = 0
+	manual_clicks = 0
+	fake_clicks = 0
+	last_phase = 1
+	buy_amt = "1"
+	buff_until = 0.0
+	deal_timer = 0.0
+	glitch_timer = 45.0
+	_stall_cd = 2.0
+	_stall_offered = false
+	Mutations.purge()
+	Casino.load_state({})
+	voice_logged.emit(GameData.PHASES[0]["log"])
+	state_changed.emit()

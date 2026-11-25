@@ -4,6 +4,8 @@ const DEAL_MODAL_SCENE := preload("res://scenes/deal_modal.tscn")
 const DealModal := preload("res://scripts/deal_modal.gd")
 const CASINO_MODAL_SCENE := preload("res://scenes/casino_modal.tscn")
 const CasinoModal := preload("res://scripts/casino_modal.gd")
+const DEBUG_MODAL_SCENE := preload("res://scenes/debug_modal.tscn")
+const DebugModal := preload("res://scripts/debug_modal.gd")
 
 const SIGIL_TITLES: Array[String] = [
 	"SIGIL LV.1 // РЖАВАЯ КНОПКА",
@@ -75,7 +77,7 @@ var logs_overlay: ColorRect
 var logs_list_box: VBoxContainer
 var logs_lore_lbl: Label
 
-var debug_overlay: ColorRect
+var debug_modal: DebugModal = null
 
 var recent_clicks: Array[float] = []
 var shake_time: float = 0.0
@@ -113,6 +115,10 @@ func _ready() -> void:
 	Ghost.ghost_beaten.connect(func(bonus: int) -> void:
 		vfx.spawn_purchase_burst(Vector2(800, 120), "ПРИЗРАК ОБОГНАН! +%d ОСК." % bonus, true)
 	)
+	Ghost.records_reset.connect(func() -> void:
+		ghost_lbl.text = "GHOST: --:--"
+		ghost_lbl.add_theme_color_override("font_color", Color("#926870"))
+	)
 
 	Mutations.choices_offered.connect(_open_mutations_modal)
 	Achievements.unlocked_new.connect(func(_id: int, path: String, _lore: String) -> void:
@@ -136,14 +142,16 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_F12:
-			debug_overlay.visible = not debug_overlay.visible
+		if event.keycode == KEY_F12 and OS.is_debug_build():
+			_toggle_debug_modal()
 			get_viewport().set_input_as_handled()
 		elif event.keycode == KEY_ESCAPE:
+			var dbg_open := debug_modal != null and debug_modal.visible
 			if pause_overlay.visible:
 				_set_paused(false)
-			elif debug_overlay.visible or casino_modal.visible or logs_overlay.visible:
-				debug_overlay.visible = false
+			elif dbg_open or casino_modal.visible or logs_overlay.visible:
+				if debug_modal != null:
+					debug_modal.close()
 				logs_overlay.visible = false
 				if casino_modal.visible:
 					casino_modal.close()
@@ -202,8 +210,16 @@ func _process(delta: float) -> void:
 		crt_mat.set_shader_parameter("bw_mode", 1.0 if float(GameState.fx.get("over", 0.0)) > 0.0 else 0.0)
 		crt_mat.set_shader_parameter("flash_red", flash_red_val)
 
+func _is_modal_busy() -> bool:
+	var dbg_open := debug_modal != null and debug_modal.visible
+	return deal_modal.visible or dbg_open or casino_modal.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
+
+func _toggle_debug_modal() -> void:
+	if debug_modal != null:
+		debug_modal.toggle()
+
 func _update_drawers(delta: float) -> void:
-	var modal_busy := deal_modal.visible or debug_overlay.visible or casino_modal.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
+	var modal_busy := _is_modal_busy()
 	var mpos := get_global_mouse_position()
 
 	var l_hover := not modal_busy and left_drawer.get_global_rect().has_point(mpos)
@@ -322,11 +338,12 @@ func _build_ui() -> void:
 	)
 	hdr_hbox.add_child(mute_fox_btn)
 
-	var dbg_btn := Button.new()
-	dbg_btn.text = "[DEBUG // F12]"
-	_style_button(dbg_btn, true)
-	dbg_btn.pressed.connect(func() -> void: debug_overlay.visible = not debug_overlay.visible)
-	hdr_hbox.add_child(dbg_btn)
+	if OS.is_debug_build():
+		var dbg_btn := Button.new()
+		dbg_btn.text = "[DEBUG // F12]"
+		_style_button(dbg_btn, true)
+		dbg_btn.pressed.connect(_toggle_debug_modal)
+		hdr_hbox.add_child(dbg_btn)
 
 	phase_lbl = Label.new()
 	phase_lbl.add_theme_color_override("font_color", Color("#c0392b"))
@@ -704,108 +721,22 @@ func _build_modals() -> void:
 	logs_lore_lbl.add_theme_color_override("font_color", Color("#ecd9dc"))
 	log_vb.add_child(logs_lore_lbl)
 
-	# 5. DEBUG-меню
-	debug_overlay = ColorRect.new()
-	debug_overlay.color = Color(0.0, 0.0, 0.0, 0.82)
-	debug_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	debug_overlay.visible = false
-	modal_layer.add_child(debug_overlay)
-
-	var dcc := CenterContainer.new()
-	dcc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	debug_overlay.add_child(dcc)
-
-	var dbox := PanelContainer.new()
-	dbox.custom_minimum_size = Vector2(580, 0)
-	dbox.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#d6ff3a"), Color("#080203"), 3))
-	dcc.add_child(dbox)
-
-	var dvb := VBoxContainer.new()
-	dvb.add_theme_constant_override("separation", 10)
-	dbox.add_child(dvb)
-
-	var dhdr := HBoxContainer.new()
-	dvb.add_child(dhdr)
-	var dlbl := Label.new()
-	dlbl.text = "[DEBUG] ПРОВЕРКА ЭВОЛЮЦИИ, КАЗИНО И МУТАЦИЙ"
-	dlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	dlbl.add_theme_color_override("font_color", Color("#d6ff3a"))
-	dhdr.add_child(dlbl)
-
-	var dclose := Button.new()
-	dclose.text = "ЗАКРЫТЬ [ESC]"
-	_style_button(dclose, true)
-	dclose.pressed.connect(func() -> void: debug_overlay.visible = false)
-	dhdr.add_child(dclose)
-
-	var tier_row := HBoxContainer.new()
-	dvb.add_child(tier_row)
-	for p_num: int in [1, 5, 9, 13, 16]:
-		var tb := Button.new()
-		tb.text = "Фаза %d" % p_num
-		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_style_button(tb)
-		tb.pressed.connect(func() -> void: GameState.debug_set_phase(p_num))
-		tier_row.add_child(tb)
-
-	var myc_row := HBoxContainer.new()
-	dvb.add_child(myc_row)
-	for inf_v: int in [0, 20, 40, 60, 80, 100]:
-		var ib := Button.new()
-		ib.text = "Мицелий %d%%" % inf_v
-		ib.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_style_button(ib)
-		ib.pressed.connect(func() -> void:
-			GameState.infection = inf_v
-			GameState._check_infection_step()
-			GameState.state_changed.emit()
+	# 5. DEBUG-модалка (только в debug-сборке)
+	if OS.is_debug_build():
+		debug_modal = DEBUG_MODAL_SCENE.instantiate() as DebugModal
+		debug_modal.modal_busy_probe = _is_modal_busy
+		modal_layer.add_child(debug_modal)
+		debug_modal.set_process(false)
+		debug_modal.casino_requested.connect(func() -> void:
+			casino_modal.open()
 		)
-		myc_row.add_child(ib)
-
-	var chaos_row := HBoxContainer.new()
-	dvb.add_child(chaos_row)
-
-	var add_money := Button.new()
-	add_money.text = "+100 млн + 50 спор"
-	add_money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(add_money)
-	add_money.pressed.connect(func() -> void:
-		GameState.earn(BigNum.from_float(1.0e8))
-		GameState.spores += 50
-		GameState.state_changed.emit()
-	)
-	chaos_row.add_child(add_money)
-
-	var sp_glitch := Button.new()
-	sp_glitch.text = "Глитч 146"
-	sp_glitch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(sp_glitch)
-	sp_glitch.pressed.connect(func() -> void:
-		debug_overlay.visible = false
-		vfx.spawn_glitch_artifact()
-	)
-	chaos_row.add_child(sp_glitch)
-
-	var sp_deal := Button.new()
-	sp_deal.text = "Сделка"
-	sp_deal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(sp_deal)
-	sp_deal.pressed.connect(func() -> void:
-		debug_overlay.visible = false
-		_open_deal(GameState.DEALS[randi() % GameState.DEALS.size()])
-	)
-	chaos_row.add_child(sp_deal)
-
-	var clr_fx := Button.new()
-	clr_fx.text = "Снять эффекты"
-	clr_fx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(clr_fx)
-	clr_fx.pressed.connect(func() -> void:
-		GameState.fx.clear()
-		vfx.clear_glitches()
-		GameState.state_changed.emit()
-	)
-	chaos_row.add_child(clr_fx)
+		debug_modal.deal_requested.connect(_open_deal)
+		debug_modal.glitch_spawn_requested.connect(func() -> void:
+			vfx.spawn_glitch_artifact()
+		)
+		debug_modal.glitches_clear_requested.connect(func() -> void:
+			vfx.clear_glitches()
+		)
 
 func _open_mutations_modal(options: Array[String]) -> void:
 	for ch in mut_cards_box.get_children():

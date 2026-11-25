@@ -4,6 +4,7 @@ const PATH := "user://ghost.cfg"
 
 signal delta_ready(delta_sec: float)
 signal ghost_beaten(bonus_shards: int)
+signal records_reset
 
 var best: Dictionary = {}
 
@@ -40,3 +41,9 @@ func on_phase_end(phase: int, t: float) -> void:
 static func fmt(sec: float) -> String:
 	var s := int(absf(sec))
 	return "%s%d:%02d" % ["-" if sec < 0.0 else "+", s / 60, s % 60]
+
+func reset_records() -> void:
+	best.clear()
+	if FileAccess.file_exists(PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
+	records_reset.emit()

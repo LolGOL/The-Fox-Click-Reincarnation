@@ -1,0 +1,255 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/debug_modal.gd" id="1_debug"]
+
+[node name="DebugModal" type="ColorRect"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.82)
+script = ExtResource("1_debug")
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="CenterContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(780, 0)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HeaderRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "[DEBUG // F12] УТИЛИТА РАЗРАБОТЧИКА FOX OS"
+autowrap_mode = 3
+
+[node name="CloseButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ЗАКРЫТЬ [ESC]"
+
+[node name="BodyScroll" type="ScrollContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(750, 560)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="SectionsBox" type="VBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="EventsPanel" type="PanelContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="EventsVBox" type="VBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EventsTitle" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[1] EVENTS // КАЗИНО, СДЕЛКИ, ПРИЗРАК И ХАОС"
+
+[node name="EventsInfoLabel" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="EventsGrid" type="GridContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 6
+columns = 3
+
+[node name="OpenCasinoButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Открыть Casino.exe"
+
+[node name="TriggerStallButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Сигнал Stall (Лис)"
+
+[node name="OpenDealButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Вызвать DealModal"
+
+[node name="GhostBeatButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Обогнать Призрака"
+
+[node name="GhostResetButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Сбросить Ghost (.cfg)"
+
+[node name="SpawnGlitchButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Глитч 146"
+
+[node name="ClearFxButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox/EventsGrid"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Снять эффекты (FX)"
+
+[node name="MycRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EventsPanel/EventsVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="EconomyPanel" type="PanelContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="EconomyVBox" type="VBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EconomyTitle" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[2] ECONOMY & PHASES // ВАЛЮТА, ФАЗЫ И СОХРАНЕНИЯ"
+
+[node name="CurrencyRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Add1MButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/CurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+1 млн (1e6)"
+
+[node name="Add100MButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/CurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+100 млн (1e8)"
+
+[node name="Add1TButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/CurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+1 трлн (1e12)"
+
+[node name="Add1QiButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/CurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+1 квинтлн (1e18)"
+
+[node name="Mul10CoinsButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/CurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "×10 монет"
+
+[node name="MetaCurrencyRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AddSporesButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/MetaCurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+50 спор"
+
+[node name="AddShardsButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/MetaCurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+10 shards"
+
+[node name="AddFreeShardsButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/MetaCurrencyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "+10 free_shards"
+
+[node name="PhasesRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="SaveRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="SaveButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/SaveRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save"
+
+[node name="LoadButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/SaveRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Load"
+
+[node name="ResetSaveButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/EconomyPanel/EconomyVBox/SaveRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reset Save"
+
+[node name="TelemetryPanel" type="PanelContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TelemetryVBox" type="VBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/TelemetryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TelemetryTitle" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/TelemetryPanel/TelemetryVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "[3] TELEMETRY // ЖИВОЙ МОНИТОР (ТОЛЬКО ПРИ ОТКРЫТОМ ОКНЕ)"
+
+[node name="TelemetryLabel" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BodyScroll/SectionsBox/TelemetryPanel/TelemetryVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
