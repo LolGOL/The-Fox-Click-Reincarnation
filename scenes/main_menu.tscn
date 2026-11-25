@@ -280,10 +280,10 @@ layout_mode = 2
 text = "THE FOX CLICK REINCARNATION
 
 Дизайн и код: FOX_OS STUDIO
-Движок: Godot 4
+Движок: Godot 4.7
 Вдохновлено: Click the Button
 
-> Fox OS: Спасибо, что кликаешь."
+> Fox OS: Спасибо, что кликаешь своей цифровой лапкой.<3"
 horizontal_alignment = 1
 
 [node name="InfoCloseButton" type="Button" parent="InfoPanel/InfoVBox"]

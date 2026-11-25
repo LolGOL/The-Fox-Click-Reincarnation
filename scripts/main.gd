@@ -23,11 +23,18 @@ const TOTAL_DRAWER_W := DRAWER_PANEL_W + HANDLE_W
 var sb_btn_normal: StyleBoxFlat
 var sb_btn_active: StyleBoxFlat
 
+var bg_rect: ColorRect
 var ui_root: VBoxContainer
 var vfx: VfxLayer
 var crt_mat: ShaderMaterial
 var sigil_btn: CoreSigilButton
 var fox_pet: FoxPetActor
+
+var _typewriter_busy: bool = false
+var _typewriter_full: String = ""
+var _typewriter_pos: int = 0
+var _typewriter_timer: Timer
+var _last_phase: int = -1
 
 var left_drawer: HBoxContainer
 var right_drawer: HBoxContainer
@@ -92,40 +99,18 @@ func _ready() -> void:
 	_build_pause_overlay()
 
 	GameState.state_changed.connect(_refresh_ui)
-	GameState.voice_logged.connect(func(txt: String) -> void:
-		voice_lbl.text = "> Fox OS: " + txt
-	)
+	GameState.voice_logged.connect(_on_voice_logged)
 	GameState.deal_requested.connect(_open_deal)
-	GameState.glitch_spawn_requested.connect(func(cnt: int) -> void:
-		for _i in range(cnt):
-			vfx.spawn_glitch_artifact()
-	)
-	GameState.screen_flash_requested.connect(func(intensity: float, shake: bool) -> void:
-		flash_red_val = maxf(flash_red_val, intensity)
-		if shake:
-			shake_time = 0.32
-	)
-	GameState.stall_detected.connect(func() -> void:
-		Casino.offer_via_fox()
-	)
+	GameState.glitch_spawn_requested.connect(_on_glitch_spawn_requested)
+	GameState.screen_flash_requested.connect(_on_screen_flash_requested)
+	GameState.stall_detected.connect(_on_stall_detected)
 	Casino.offer_changed.connect(_on_casino_offer_changed)
 
-	Ghost.delta_ready.connect(func(d_sec: float) -> void:
-		ghost_lbl.text = "GHOST: " + Ghost.fmt(d_sec)
-		ghost_lbl.add_theme_color_override("font_color", Color("#39ff88") if d_sec < 0.0 else Color("#ff5266"))
-	)
-	Ghost.ghost_beaten.connect(func(bonus: int) -> void:
-		vfx.spawn_purchase_burst(Vector2(800, 120), "ПРИЗРАК ОБОГНАН! +%d ОСК." % bonus, true)
-	)
-	Ghost.records_reset.connect(func() -> void:
-		ghost_lbl.text = "GHOST: --:--"
-		ghost_lbl.add_theme_color_override("font_color", Color("#926870"))
-	)
+	Ghost.delta_ready.connect(_on_ghost_delta_ready)
+	Ghost.ghost_beaten.connect(_on_ghost_beaten)
+	Ghost.records_reset.connect(_on_ghost_records_reset)
 
-	Achievements.unlocked_new.connect(func(_id: int, path: String, _lore: String) -> void:
-		voice_lbl.text = "> Fox OS: Файл расшифрован -> " + path
-		vfx.spawn_floating_text(Vector2(800, 90), "UNLOCK: " + path, Color("#00e5ff"), 1.05)
-	)
+	Achievements.unlocked_new.connect(_on_achievement_unlocked)
 
 	tick_timer = Timer.new()
 	tick_timer.wait_time = 0.1
@@ -139,7 +124,66 @@ func _ready() -> void:
 	save_timer.timeout.connect(GameState.save_game)
 	add_child(save_timer)
 
+	_last_phase = Economy.phase_of(GameState)
+	if bg_rect != null:
+		bg_rect.color = Economy.bg_color_for_phase(_last_phase)
+	_type_voice("> Fox OS: Заработай. Возвысься. Стань мной.")
+
 	_refresh_ui()
+
+func _exit_tree() -> void:
+	if GameState.state_changed.is_connected(_refresh_ui):
+		GameState.state_changed.disconnect(_refresh_ui)
+	if GameState.voice_logged.is_connected(_on_voice_logged):
+		GameState.voice_logged.disconnect(_on_voice_logged)
+	if GameState.deal_requested.is_connected(_open_deal):
+		GameState.deal_requested.disconnect(_open_deal)
+	if GameState.glitch_spawn_requested.is_connected(_on_glitch_spawn_requested):
+		GameState.glitch_spawn_requested.disconnect(_on_glitch_spawn_requested)
+	if GameState.screen_flash_requested.is_connected(_on_screen_flash_requested):
+		GameState.screen_flash_requested.disconnect(_on_screen_flash_requested)
+	if GameState.stall_detected.is_connected(_on_stall_detected):
+		GameState.stall_detected.disconnect(_on_stall_detected)
+	if Casino.offer_changed.is_connected(_on_casino_offer_changed):
+		Casino.offer_changed.disconnect(_on_casino_offer_changed)
+	if Ghost.delta_ready.is_connected(_on_ghost_delta_ready):
+		Ghost.delta_ready.disconnect(_on_ghost_delta_ready)
+	if Ghost.ghost_beaten.is_connected(_on_ghost_beaten):
+		Ghost.ghost_beaten.disconnect(_on_ghost_beaten)
+	if Ghost.records_reset.is_connected(_on_ghost_records_reset):
+		Ghost.records_reset.disconnect(_on_ghost_records_reset)
+	if Achievements.unlocked_new.is_connected(_on_achievement_unlocked):
+		Achievements.unlocked_new.disconnect(_on_achievement_unlocked)
+
+func _on_voice_logged(txt: String) -> void:
+	_type_voice("> Fox OS: " + txt)
+
+func _on_glitch_spawn_requested(cnt: int) -> void:
+	for _i in range(cnt):
+		vfx.spawn_glitch_artifact()
+
+func _on_screen_flash_requested(intensity: float, shake: bool) -> void:
+	flash_red_val = maxf(flash_red_val, intensity)
+	if shake:
+		shake_time = 0.32
+
+func _on_stall_detected() -> void:
+	Casino.offer_via_fox()
+
+func _on_ghost_delta_ready(d_sec: float) -> void:
+	ghost_lbl.text = "GHOST: " + Ghost.fmt(d_sec)
+	ghost_lbl.add_theme_color_override("font_color", Color("#39ff88") if d_sec < 0.0 else Color("#ff5266"))
+
+func _on_ghost_beaten(bonus: int) -> void:
+	vfx.spawn_purchase_burst(Vector2(800, 120), "ПРИЗРАК ОБОГНАН! +%d ОСК." % bonus, true)
+
+func _on_ghost_records_reset() -> void:
+	ghost_lbl.text = "GHOST: --:--"
+	ghost_lbl.add_theme_color_override("font_color", Color("#926870"))
+
+func _on_achievement_unlocked(_id: int, path: String, _lore: String) -> void:
+	_type_voice("> Fox OS: Файл расшифрован -> " + path)
+	vfx.spawn_floating_text(Vector2(800, 90), "UNLOCK: " + path, Color("#00e5ff"), 1.05)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -161,6 +205,11 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	var cur_ph: int = Economy.phase_of(GameState)
+	if cur_ph != _last_phase:
+		_on_phase_changed(_last_phase, cur_ph)
+		_last_phase = cur_ph
+
 	var now: float = Time.get_unix_time_from_system()
 	while not recent_clicks.is_empty() and now - recent_clicks[0] > 1.0:
 		recent_clicks.pop_front()
@@ -204,12 +253,50 @@ func _process(delta: float) -> void:
 	flash_red_val = maxf(0.0, flash_red_val - delta * 1.4)
 	if crt_mat:
 		var inf_f := float(inf) / 100.0
-		var aber := 0.0008 + inf_f * 0.004 + (0.003 if Mutations.has_glitch("chroma") else 0.0)
-		var tear := 0.025 if (inf >= 80 or Mutations.has_glitch("tear")) else (0.01 if inf >= 60 else 0.0)
+		var aber := 0.0002 + inf_f * 0.001 + (0.001 if Mutations.has_glitch("chroma") else 0.0)
+		var tear := 0.005 if (inf >= 80 or Mutations.has_glitch("tear")) else 0.0
 		crt_mat.set_shader_parameter("aberration", aber)
 		crt_mat.set_shader_parameter("tear_strength", tear)
 		crt_mat.set_shader_parameter("bw_mode", 1.0 if float(GameState.fx.get("over", 0.0)) > 0.0 else 0.0)
-		crt_mat.set_shader_parameter("flash_red", flash_red_val)
+		crt_mat.set_shader_parameter("flash_red", flash_red_val * 0.5)
+
+func _on_phase_changed(old_ph: int, new_ph: int) -> void:
+	var old_tier: int = Economy.tier_of(old_ph) if old_ph > 0 else 1
+	var new_tier: int = Economy.tier_of(new_ph)
+	if fox_pet != null:
+		fox_pet.evolve(new_tier)
+	if bg_rect != null:
+		var bg_tw := create_tween()
+		bg_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		bg_tw.tween_property(bg_rect, "color", Economy.bg_color_for_phase(new_ph), 0.9)
+	var phase_name: String = String(GameData.PHASES[new_ph - 1]["name"]).to_upper()
+	if new_tier > old_tier:
+		_type_voice("> Fox OS: ФАЗА %d // %s. Тир Лиса повышен до %d. Метки переписаны." % [new_ph, phase_name, new_tier])
+	else:
+		_type_voice("> Fox OS: ФАЗА %d // %s. Глубина растёт." % [new_ph, phase_name])
+
+func _type_voice(text: String) -> void:
+	_typewriter_full = text
+	_typewriter_pos = 0
+	_typewriter_busy = true
+	voice_lbl.text = ""
+	if _typewriter_timer == null:
+		_typewriter_timer = Timer.new()
+		_typewriter_timer.wait_time = 0.022
+		_typewriter_timer.timeout.connect(_type_voice_tick)
+		add_child(_typewriter_timer)
+	_typewriter_timer.start()
+
+func _type_voice_tick() -> void:
+	if not _typewriter_busy:
+		if _typewriter_timer != null:
+			_typewriter_timer.stop()
+		return
+	_typewriter_pos += 1
+	voice_lbl.text = _typewriter_full.substr(0, _typewriter_pos)
+	if _typewriter_pos >= _typewriter_full.length():
+		_typewriter_timer.stop()
+		_typewriter_busy = false
 
 func _is_modal_busy() -> bool:
 	var dbg_open := debug_modal != null and debug_modal.visible
@@ -285,10 +372,10 @@ func _build_ui() -> void:
 	ui_layer.layer = 1
 	add_child(ui_layer)
 
-	var bg := ColorRect.new()
-	bg.color = Color("#030102")
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ui_layer.add_child(bg)
+	bg_rect = ColorRect.new()
+	bg_rect.color = Color("#030102")
+	bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui_layer.add_child(bg_rect)
 
 	ui_root = VBoxContainer.new()
 	ui_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -639,7 +726,7 @@ func _build_modals() -> void:
 		GameState.apply_deal(deal)
 	)
 	deal_modal.rejected.connect(func(timed_out: bool) -> void:
-		voice_lbl.text = "> Fox OS: Ты молчал. Я записал это как отказ." if timed_out else "> Fox OS: Отказ записан. Я запомню."
+		_type_voice("> Fox OS: Ты молчал. Я записал это как отказ." if timed_out else "> Fox OS: Отказ записан. Я запомню.")
 	)
 
 	# 2. Окно Casino.exe (с защитой от F5 и охотой на ухо Лиса)
@@ -788,22 +875,46 @@ func _tick_fake_button(delta: float, inf: int) -> void:
 	if inf >= 80:
 		fake_timer -= delta
 		if fake_timer <= 0.0:
-			fake_timer = 5.5
+			fake_timer = 7.5
 			var idx := randi() % GameData.BUILDINGS.size()
 			var holder := Control.new()
 			holder.custom_minimum_size = Vector2(0, 38)
 			var fbtn := Button.new()
 			fbtn.set_anchors_preset(Control.PRESET_FULL_RECT)
 			fbtn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			fbtn.text = "%s [ERROR 146]  [×%d]" % [GameData.BUILDINGS[idx]["name"], GameState.b[idx]]
-			_style_button(fbtn)
+			fbtn.text = "%s [ERROR 146]  [ВЗЛОМАТЬ]" % [GameData.BUILDINGS[idx]["name"]]
+			_style_button(fbtn, true)
 			fbtn.pressed.connect(func() -> void:
 				GameState.fake_clicks += 1
-				Audio.play_sfx("error")
-				flash_red_val = 0.85
 				shake_time = 0.25
-				voice_lbl.text = "> Fox OS: Доступ запрещен."
-				vfx.spawn_floating_text(get_global_mouse_position(), "ДОСТУП ЗАПРЕЩЕН!", Color("#ff1e38"), 1.15)
+				var roll: float = randf()
+				if roll < 0.40:
+					Audio.play_sfx("success")
+					flash_red_val = 0.4
+					GameState.fx["buffer_overflow"] = 15.0
+					_type_voice("> Fox OS: Переполнение буфера. Доход ускорен.")
+					vfx.spawn_floating_text(get_global_mouse_position(), "БУФЕР ×7 (15с)!", Color("#39ff88"), 1.2)
+				elif roll < 0.70:
+					Audio.play_sfx("success")
+					flash_red_val = 0.5
+					GameState.spores += 3
+					GameState.state_changed.emit()
+					_type_voice("> Fox OS: Спортивный инъектор внедрен. (+3 споры)")
+					vfx.spawn_floating_text(get_global_mouse_position(), "+3 СПОРЫ!", Color("#00e5ff"), 1.2)
+				elif roll < 0.90:
+					Audio.play_sfx("success")
+					flash_red_val = 0.6
+					GameState.earn(GameState.get_effective_cps().mul_float(30.0))
+					_type_voice("> Fox OS: Аномальный сектор расшифрован. Пакет данных принят.")
+					vfx.spawn_floating_text(get_global_mouse_position(), "ДАННЫЕ ЗАХВАЧЕНЫ!", Color("#d6ff3a"), 1.2)
+				else:
+					Audio.play_sfx("error")
+					flash_red_val = 0.9
+					var penalty: BigNum = GameState.coins.mul_float(0.05)
+					GameState.coins = GameState.coins.sub(penalty)
+					GameState.state_changed.emit()
+					_type_voice("> Fox OS: Ошибка доступа. Пакет поврежден, ресурсы сброшены.")
+					vfx.spawn_floating_text(get_global_mouse_position(), "СБОЙ СИСТЕМЫ!", Color("#ff1e38"), 1.3)
 				if is_instance_valid(fake_row):
 					fake_row.queue_free()
 					fake_row = null
@@ -955,6 +1066,8 @@ func _build_pause_overlay() -> void:
 func _set_paused(on: bool) -> void:
 	pause_overlay.visible = on
 	tick_timer.paused = on
+	if _typewriter_timer != null:
+		_typewriter_timer.paused = on
 	if on:
 		GameState.save_game()
 
