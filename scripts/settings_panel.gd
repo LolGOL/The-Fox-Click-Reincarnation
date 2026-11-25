@@ -13,6 +13,9 @@ const TEXT := Color("#ecd9dc")
 
 var _tabs: Array[Button] = []
 var _pages: Array[VBoxContainer] = []
+var _toggle_btns: Dictionary = {} # key: String -> Button
+var _slider_controls: Dictionary = {} # key: String -> { "slider": HSlider, "label": Label }
+var _settings_changed_cb: Callable
 
 func _ready() -> void:
 	add_theme_stylebox_override("panel", FoxTheme.panel_style(RED, BG, 2))
@@ -67,7 +70,15 @@ func _ready() -> void:
 	_slider(_pages[2], "Общая громкость", "master_volume", false)
 	_toggle(_pages[2], "Звук интерфейса и кликов", "sfx_on")
 
+	_settings_changed_cb = Callable(self, "_on_external_setting_changed")
+	if not FoxSettings.changed.is_connected(_settings_changed_cb):
+		FoxSettings.changed.connect(_settings_changed_cb)
+
 	_select_tab(0)
+
+func _exit_tree() -> void:
+	if _settings_changed_cb.is_valid() and FoxSettings.changed.is_connected(_settings_changed_cb):
+		FoxSettings.changed.disconnect(_settings_changed_cb)
 
 func _flat_button(txt: String) -> Button:
 	var b := Button.new()
@@ -128,36 +139,58 @@ func _toggle(page: VBoxContainer, text: String, key: String) -> void:
 	b.toggle_mode = true
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(110.0, 0.0)
-	b.button_pressed = bool(FoxSettings.get(key))
-	var refresh := func() -> void:
-		var on := b.button_pressed
-		b.text = "[ ВКЛ ]" if on else "[ ВЫКЛ ]"
-		var s := StyleBoxFlat.new()
-		s.bg_color = Color("#06200f") if on else Color("#1a0205")
-		s.set_border_width_all(2)
-		s.border_color = GREEN if on else RED_DIM
-		s.content_margin_top = 6
-		s.content_margin_bottom = 6
-		for st: String in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
-			b.add_theme_stylebox_override(st, s)
-		var fc := GREEN if on else RED_SOFT
-		b.add_theme_color_override("font_color", fc)
-		b.add_theme_color_override("font_hover_color", fc)
-		b.add_theme_color_override("font_pressed_color", fc)
-		b.add_theme_color_override("font_hover_pressed_color", fc)
-	refresh.call()
-	b.toggled.connect(func(on: bool) -> void:
-		FoxSettings.set_value(key, on)
-		refresh.call()
-		Audio.play_sfx("click")
-	)
+	var initial_on := bool(FoxSettings.get(key))
+	b.set_pressed_no_signal(initial_on)
+	_apply_toggle_visual(b, initial_on)
+	b.toggled.connect(_on_toggle_pressed.bind(key))
 	row.add_child(b)
-	# внешние изменения (например, через другой экран)
-	FoxSettings.changed.connect(func(k: String) -> void:
-		if k == key and b.button_pressed != bool(FoxSettings.get(key)):
-			b.set_pressed_no_signal(bool(FoxSettings.get(key)))
-			refresh.call()
-	)
+	_toggle_btns[key] = b
+
+func _apply_toggle_visual(b: Button, on: bool) -> void:
+	if b == null or not is_instance_valid(b):
+		return
+	b.text = "[ ВКЛ ]" if on else "[ ВЫКЛ ]"
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color("#06200f") if on else Color("#1a0205")
+	s.set_border_width_all(2)
+	s.border_color = GREEN if on else RED_DIM
+	s.content_margin_top = 6
+	s.content_margin_bottom = 6
+	for st: String in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
+		b.add_theme_stylebox_override(st, s)
+	var fc := GREEN if on else RED_SOFT
+	b.add_theme_color_override("font_color", fc)
+	b.add_theme_color_override("font_hover_color", fc)
+	b.add_theme_color_override("font_pressed_color", fc)
+	b.add_theme_color_override("font_hover_pressed_color", fc)
+
+func _on_toggle_pressed(on: bool, key: String) -> void:
+	if not is_inside_tree():
+		return
+	FoxSettings.set_value(key, on)
+	if _toggle_btns.has(key):
+		_apply_toggle_visual(_toggle_btns[key], on)
+	Audio.play_sfx("click")
+
+func _on_external_setting_changed(key: String) -> void:
+	if not is_inside_tree():
+		return
+	if _toggle_btns.has(key):
+		var b: Button = _toggle_btns[key]
+		if b != null and is_instance_valid(b):
+			var target_on := bool(FoxSettings.get(key))
+			if b.button_pressed != target_on:
+				b.set_pressed_no_signal(target_on)
+			_apply_toggle_visual(b, target_on)
+	if _slider_controls.has(key):
+		var entry: Dictionary = _slider_controls[key]
+		var sl: HSlider = entry["slider"]
+		var lbl: Label = entry["label"]
+		var v := float(FoxSettings.get(key))
+		if sl != null and is_instance_valid(sl) and not is_equal_approx(sl.value, v):
+			sl.set_value_no_signal(v)
+		if lbl != null and is_instance_valid(lbl):
+			lbl.text = "%d%%" % int(round(v * 100.0))
 
 func _slider(page: VBoxContainer, text: String, key: String, preview_shake: bool) -> void:
 	var row := _row(page, text)
@@ -188,12 +221,20 @@ func _slider(page: VBoxContainer, text: String, key: String, preview_shake: bool
 	val.add_theme_color_override("font_color", RED_SOFT)
 	val.text = "%d%%" % int(round(sl.value * 100.0))
 	row.add_child(val)
-	sl.value_changed.connect(func(v: float) -> void:
-		FoxSettings.set_value(key, v)
-		val.text = "%d%%" % int(round(v * 100.0))
-	)
-	sl.drag_ended.connect(func(_changed: bool) -> void:
-		Audio.play_sfx("click")
-		if preview_shake:
-			shake_preview.emit(FoxSettings.screen_shake)
-	)
+	_slider_controls[key] = { "slider": sl, "label": val }
+	sl.value_changed.connect(_on_slider_value_changed.bind(key, val))
+	sl.drag_ended.connect(_on_slider_drag_ended.bind(preview_shake))
+
+func _on_slider_value_changed(v: float, key: String, lbl: Label) -> void:
+	if not is_inside_tree():
+		return
+	FoxSettings.set_value(key, v)
+	if lbl != null and is_instance_valid(lbl):
+		lbl.text = "%d%%" % int(round(v * 100.0))
+
+func _on_slider_drag_ended(_changed: bool, preview_shake: bool) -> void:
+	if not is_inside_tree():
+		return
+	Audio.play_sfx("click")
+	if preview_shake:
+		shake_preview.emit(FoxSettings.screen_shake)

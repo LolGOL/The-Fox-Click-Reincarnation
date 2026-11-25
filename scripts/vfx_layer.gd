@@ -164,10 +164,10 @@ func _on_canvas_draw() -> void:
 			canvas.draw_rect(Rect2(float(b["nx"]) * vp.x, float(b["ny"]) * vp.y, sz, sz), Color(0.85, 0.25, 0.2, 0.22), true)
 	elif tier == 2:
 		for k in range(12):
-			var p1 := Vector2(vp.x * (0.1 + float(k % 4) * 0.26) + sin(time_acc + k) * 28.0, vp.y * (0.18 + float(k / 4) * 0.32))
+			var p1 := Vector2(vp.x * (0.1 + float(k % 4) * 0.26) + sin(time_acc + k) * 28.0, vp.y * (0.18 + (float(k) / 4.0) * 0.32))
 			canvas.draw_rect(Rect2(p1 - Vector2(3.0, 3.0), Vector2(6.0, 6.0)), Color(1.0, 0.12, 0.22, 0.3), true)
 			if k < 11:
-				var p2 := Vector2(vp.x * (0.1 + float((k + 1) % 4) * 0.26), vp.y * (0.18 + float((k + 1) / 4) * 0.32))
+				var p2 := Vector2(vp.x * (0.1 + float((k + 1) % 4) * 0.26), vp.y * (0.18 + (float(k + 1) / 4.0) * 0.32))
 				canvas.draw_line(p1, p2, Color(1.0, 0.12, 0.22, 0.12), 1.2)
 	elif tier == 3:
 		var center := vp * 0.5
