@@ -92,6 +92,8 @@ static func base_cps(s: Node) -> BigNum:
 
 static func cps(s: Node, buff_active: bool) -> BigNum:
 	var mult: float = global_mult(s) * ((GameData.BUFF_MULT + float(s.perks.get("glitchBuffMultAdd", 0.0))) if buff_active else 1.0)
+	if float(s.fx.get("buffer_overflow", 0.0)) > 0.0:
+		mult *= 7.0
 	return base_cps(s).mul_float(mult)
 
 static func click_pct(s: Node) -> float:
@@ -116,6 +118,24 @@ static func phase_of(s: Node) -> int:
 
 static func tier_of(phase: int) -> int:
 	return mini(4, int(ceil(float(phase) / 4.0)))
+
+# --- Атмосферные палитры для смены фона по тиру/фазе ---
+
+static func bg_color_for_phase(phase: int) -> Color:
+	var t: int = tier_of(phase)
+	match t:
+		1: return Color("#030102")   # ржавая кнопка
+		2: return Color("#050103")   # хищный терминал
+		3: return Color("#030608")   # реактор кода 146
+		_: return Color("#02070a")   # цифровой разлом
+
+static func accent_color_for_phase(phase: int) -> Color:
+	var t: int = tier_of(phase)
+	match t:
+		1: return Color("#c0392b")
+		2: return Color("#ff1e38")
+		3: return Color("#ff3b7a")
+		_: return Color("#00e5ff")
 
 static func myc_cost(s: Node) -> BigNum:
 	var idx: int = mini(int(floor(float(s.infection) / 20.0)), GameData.MYC_COSTS.size() - 1)

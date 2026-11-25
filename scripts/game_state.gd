@@ -464,18 +464,27 @@ func load_game() -> void:
 	shards = int(parsed.get("shards", 0))
 	free_shards = int(parsed.get("free_shards", 0))
 	reinc = int(parsed.get("reinc", 0))
-	var saved_b: Array = parsed.get("b", [])
-	for i: int in range(mini(b.size(), saved_b.size())):
-		b[i] = int(saved_b[i])
-	var saved_cu: Dictionary = parsed.get("cu", {})
-	for k: String in cu.keys():
-		cu[k] = bool(saved_cu.get(k, false))
-	var saved_muts: Array = parsed.get("mutations", [])
-	Mutations.load_active(saved_muts)
-	var saved_ach: Dictionary = parsed.get("ach", {})
-	Achievements.load_unlocked(saved_ach)
-	var saved_cas: Dictionary = parsed.get("casino", {})
-	Casino.load_state(saved_cas)
+	var saved_b: Variant = parsed.get("b", [])
+	if saved_b is Array:
+		for i: int in range(mini(b.size(), saved_b.size())):
+			b[i] = int(saved_b[i])
+	# Восстанавливаем пороги купленных улучшений зданий.
+	# Старые сохранения без b_up остаются совместимыми: значения по умолчанию сохраняются.
+	var saved_b_up: Variant = parsed.get("b_up", [])
+	if saved_b_up is Array:
+		for i: int in range(mini(b_up.size(), saved_b_up.size())):
+			if saved_b_up[i] is Array:
+				b_up[i] = saved_b_up[i].duplicate()
+	var saved_cu: Variant = parsed.get("cu", {})
+	if saved_cu is Dictionary:
+		for k: String in cu.keys():
+			cu[k] = bool(saved_cu.get(k, false))
+	var saved_muts: Variant = parsed.get("mutations", [])
+	Mutations.load_active(saved_muts if saved_muts is Array else [])
+	var saved_ach: Variant = parsed.get("ach", {})
+	Achievements.load_unlocked(saved_ach if saved_ach is Dictionary else {})
+	var saved_cas: Variant = parsed.get("casino", {})
+	Casino.load_state(saved_cas if saved_cas is Dictionary else {})
 
 func reset_save_data() -> void:
 	if FileAccess.file_exists(GameData.SAVE_PATH):
