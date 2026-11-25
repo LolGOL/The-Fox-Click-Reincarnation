@@ -4,6 +4,8 @@ const DEAL_MODAL_SCENE := preload("res://scenes/deal_modal.tscn")
 const DealModal := preload("res://scripts/deal_modal.gd")
 const CASINO_MODAL_SCENE := preload("res://scenes/casino_modal.tscn")
 const CasinoModal := preload("res://scripts/casino_modal.gd")
+const MUTATIONS_MODAL_SCENE := preload("res://scenes/mutations_modal.tscn")
+const MutationsModal := preload("res://scripts/mutations_modal.gd")
 const DEBUG_MODAL_SCENE := preload("res://scenes/debug_modal.tscn")
 const DebugModal := preload("res://scripts/debug_modal.gd")
 
@@ -56,6 +58,7 @@ var tick_timer: Timer
 var _autoclick_cd: float = 0.0
 var sound_btn: Button
 var mute_fox_btn: Button
+var casino_btn: Button
 
 var shop_list: VBoxContainer
 var shop_rows: Array[Dictionary] = []
@@ -69,9 +72,7 @@ var last_up_sig: String = ""
 # Модальные окна
 var deal_modal: DealModal
 var casino_modal: CasinoModal
-
-var mut_overlay: ColorRect
-var mut_cards_box: VBoxContainer
+var mutations_modal: MutationsModal
 
 var logs_overlay: ColorRect
 var logs_list_box: VBoxContainer
@@ -107,6 +108,7 @@ func _ready() -> void:
 	GameState.stall_detected.connect(func() -> void:
 		Casino.offer_via_fox()
 	)
+	Casino.offer_changed.connect(_on_casino_offer_changed)
 
 	Ghost.delta_ready.connect(func(d_sec: float) -> void:
 		ghost_lbl.text = "GHOST: " + Ghost.fmt(d_sec)
@@ -120,7 +122,6 @@ func _ready() -> void:
 		ghost_lbl.add_theme_color_override("font_color", Color("#926870"))
 	)
 
-	Mutations.choices_offered.connect(_open_mutations_modal)
 	Achievements.unlocked_new.connect(func(_id: int, path: String, _lore: String) -> void:
 		voice_lbl.text = "> Fox OS: Файл расшифрован -> " + path
 		vfx.spawn_floating_text(Vector2(800, 90), "UNLOCK: " + path, Color("#00e5ff"), 1.05)
@@ -212,7 +213,7 @@ func _process(delta: float) -> void:
 
 func _is_modal_busy() -> bool:
 	var dbg_open := debug_modal != null and debug_modal.visible
-	return deal_modal.visible or dbg_open or casino_modal.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
+	return deal_modal.visible or dbg_open or casino_modal.visible or mutations_modal.visible or logs_overlay.visible or pause_overlay.visible
 
 func _toggle_debug_modal() -> void:
 	if debug_modal != null:
@@ -337,6 +338,13 @@ func _build_ui() -> void:
 		mute_fox_btn.text = "[ЛИС: МОЛЧИТ]" if Fox.muted else "[ЛИС: ГОВОРИТ]"
 	)
 	hdr_hbox.add_child(mute_fox_btn)
+
+	casino_btn = Button.new()
+	casino_btn.text = "[ CASINO.EXE ]"
+	_style_button(casino_btn, true)
+	casino_btn.visible = Casino.offer_active
+	casino_btn.pressed.connect(_open_casino_from_offer)
+	hdr_hbox.add_child(casino_btn)
 
 	if OS.is_debug_build():
 		var dbg_btn := Button.new()
@@ -641,35 +649,16 @@ func _build_modals() -> void:
 		var burst_text := ("ЛИС ПОЙМАН! +%d СПОР" % win) if busted else ("+%d СПОР" % win)
 		vfx.spawn_purchase_burst(Vector2(800, 420), burst_text, busted)
 	)
+	casino_modal.closed.connect(Casino.clear_offer)
+	if fox_pet:
+		fox_pet.casino_requested.connect(_open_casino_from_offer)
 
 	# 3. Окно выбора Мутаций мицелия (1 из 3)
-	mut_overlay = ColorRect.new()
-	mut_overlay.color = Color(0.0, 0.0, 0.0, 0.86)
-	mut_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	mut_overlay.visible = false
-	modal_layer.add_child(mut_overlay)
-
-	var mut_cc := CenterContainer.new()
-	mut_cc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	mut_overlay.add_child(mut_cc)
-
-	var mut_box := PanelContainer.new()
-	mut_box.custom_minimum_size = Vector2(620, 0)
-	mut_box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color("#090103"), 3))
-	mut_cc.add_child(mut_box)
-
-	var mut_vb := VBoxContainer.new()
-	mut_vb.add_theme_constant_override("separation", 12)
-	mut_box.add_child(mut_vb)
-
-	var mut_t := Label.new()
-	mut_t.text = "[МУТАЦИЯ МИЦЕЛИЯ] ВЫБЕРИ ШТАММ РАЗВИТИЯ (1 ИЗ 3)"
-	mut_t.add_theme_color_override("font_color", Color("#ff1e38"))
-	mut_vb.add_child(mut_t)
-
-	mut_cards_box = VBoxContainer.new()
-	mut_cards_box.add_theme_constant_override("separation", 8)
-	mut_vb.add_child(mut_cards_box)
+	mutations_modal = MUTATIONS_MODAL_SCENE.instantiate() as MutationsModal
+	modal_layer.add_child(mutations_modal)
+	mutations_modal.mutation_picked.connect(func(_id: String, info: Dictionary) -> void:
+		vfx.spawn_purchase_burst(Vector2(800, 450), "ШТАММ ВЖИВЛЁН: " + str(info.get("name", "")), true)
+	)
 
 	# 4. Виртуальная ФС /sys/146/NNN.log
 	logs_overlay = ColorRect.new()
@@ -738,22 +727,14 @@ func _build_modals() -> void:
 			vfx.clear_glitches()
 		)
 
-func _open_mutations_modal(options: Array[String]) -> void:
-	for ch in mut_cards_box.get_children():
-		ch.queue_free()
-	for id: String in options:
-		var info: Dictionary = Mutations.POOL[id]
-		var btn := Button.new()
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.text = "%s\n%s" % [info["name"], info["desc"]]
-		_style_button(btn, true)
-		btn.pressed.connect(func() -> void:
-			Mutations.pick(id)
-			mut_overlay.visible = false
-			vfx.spawn_purchase_burst(Vector2(800, 450), "ШТАММ ВЖИВЛЁН: " + str(info["name"]), true)
-		)
-		mut_cards_box.add_child(btn)
-	mut_overlay.visible = true
+func _open_casino_from_offer() -> void:
+	if not _is_modal_busy():
+		if casino_modal.open():
+			Casino.clear_offer()
+
+func _on_casino_offer_changed(active: bool) -> void:
+	if casino_btn:
+		casino_btn.visible = active
 
 func _open_logs_modal() -> void:
 	for ch in logs_list_box.get_children():

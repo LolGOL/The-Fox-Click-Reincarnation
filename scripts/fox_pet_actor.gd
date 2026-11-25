@@ -1,6 +1,8 @@
 class_name FoxPetActor
 extends Control
 
+signal casino_requested
+
 # Лис сидит на левом краю кнопки-печати. Назначается из main.gd: fox_pet.anchor = sigil_btn
 var anchor: Control
 
@@ -40,8 +42,33 @@ func _ready() -> void:
 	bubble_lbl.add_theme_font_size_override("font_size", 12)
 	bubble.add_child(bubble_lbl)
 
-	Fox.say.connect(func(txt: String) -> void: bubble_lbl.text = txt)
-	Casino.ear_twitch.connect(func() -> void: _ear_twitch = 0.45)
+	if not Fox.say.is_connected(_on_fox_say):
+		Fox.say.connect(_on_fox_say)
+	if not Casino.ear_twitch.is_connected(_on_ear_twitch):
+		Casino.ear_twitch.connect(_on_ear_twitch)
+	if not Casino.offer_changed.is_connected(_on_casino_offer_changed):
+		Casino.offer_changed.connect(_on_casino_offer_changed)
+	_on_casino_offer_changed(Casino.offer_active)
+
+func _exit_tree() -> void:
+	if Fox.say.is_connected(_on_fox_say):
+		Fox.say.disconnect(_on_fox_say)
+	if Casino.ear_twitch.is_connected(_on_ear_twitch):
+		Casino.ear_twitch.disconnect(_on_ear_twitch)
+	if Casino.offer_changed.is_connected(_on_casino_offer_changed):
+		Casino.offer_changed.disconnect(_on_casino_offer_changed)
+
+func _on_fox_say(txt: String) -> void:
+	bubble_lbl.text = (txt + "\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]") if Casino.offer_active else txt
+
+func _on_ear_twitch() -> void:
+	_ear_twitch = 0.45
+
+func _on_casino_offer_changed(active: bool) -> void:
+	var border := FoxTheme.ACID if active else Color("#c0392b")
+	bubble.add_theme_stylebox_override("panel", FoxTheme.panel_style(border, Color(0.04, 0.005, 0.012, 0.95), 2))
+	if not active:
+		bubble_lbl.text = bubble_lbl.text.replace("\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]", "")
 
 # Реакция на клик игрока по кнопке (вызывается из main.gd)
 func react(is_crit: bool = false) -> void:
@@ -54,6 +81,9 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_hop = 1.0
 		if event.position.y <= 78.0 and Casino.on_fox_ear_clicked():
+			return
+		if Casino.offer_active:
+			casino_requested.emit()
 			return
 		Fox.on_poke()
 

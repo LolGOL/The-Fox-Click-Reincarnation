@@ -4,6 +4,7 @@ signal spin_started(bet: int)
 signal spin_resolved(result: Dictionary)
 signal ear_twitch
 signal clue_found(total_clues: int)
+signal offer_changed(active: bool)
 
 const TWITCH_WINDOW := 0.4
 const PITY_LIMIT := 6
@@ -14,6 +15,7 @@ var pending: Dictionary = {}
 var loss_streak: int = 0
 var clues: int = 0
 var twitch_open: bool = false
+var offer_active: bool = false
 var _spin_token: int = 0
 
 func _ready() -> void:
@@ -30,6 +32,7 @@ func load_state(d: Dictionary) -> void:
 	pending = {}
 	if not saved_pending.is_empty():
 		loss_streak += 1
+	clear_offer()
 
 func spin(bet: int) -> bool:
 	if not pending.is_empty() or bet <= 0 or GameState.spores < bet:
@@ -113,4 +116,12 @@ func _finish() -> void:
 	spin_resolved.emit(res)
 
 func offer_via_fox() -> void:
+	offer_active = true
+	offer_changed.emit(true)
 	Fox.say_forced("Затык в экономике? Сыграем в Casino.exe на споры... Я сегодня честный. Почти.")
+
+func clear_offer() -> void:
+	if not offer_active:
+		return
+	offer_active = false
+	offer_changed.emit(false)
