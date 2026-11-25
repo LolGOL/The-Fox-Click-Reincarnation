@@ -19,6 +19,16 @@ var _blink: float = 0.0
 var _blink_cd: float = 3.0
 var _was_sleeping: bool = false
 
+# Эволюция тира
+var _current_tier: int = 1
+var _tier_tween: Tween
+
+# Эффект печатной машинки для облачка
+var _tw_timer: Timer
+var _tw_full: String = ""
+var _tw_pos: int = 0
+var _tw_busy: bool = false
+
 var bubble: PanelContainer
 var bubble_lbl: Label
 
@@ -26,6 +36,8 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(130, 140)
 	size = Vector2(130, 140)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	pivot_offset = size * 0.5
+	_current_tier = Economy.tier_of(Economy.phase_of(GameState))
 
 	bubble = PanelContainer.new()
 	bubble.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#c0392b"), Color(0.04, 0.005, 0.012, 0.95), 2))
@@ -35,7 +47,7 @@ func _ready() -> void:
 	add_child(bubble)
 
 	bubble_lbl = Label.new()
-	bubble_lbl.text = "Жми на красную печать! Нам нужна энергия!"
+	bubble_lbl.text = ""
 	bubble_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bubble_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bubble_lbl.add_theme_color_override("font_color", Color("#ecd9dc"))
@@ -49,6 +61,7 @@ func _ready() -> void:
 	if not Casino.offer_changed.is_connected(_on_casino_offer_changed):
 		Casino.offer_changed.connect(_on_casino_offer_changed)
 	_on_casino_offer_changed(Casino.offer_active)
+	_type_bubble("Жми на красную печать! Нам нужна энергия!")
 
 func _exit_tree() -> void:
 	if Fox.say.is_connected(_on_fox_say):
@@ -59,7 +72,8 @@ func _exit_tree() -> void:
 		Casino.offer_changed.disconnect(_on_casino_offer_changed)
 
 func _on_fox_say(txt: String) -> void:
-	bubble_lbl.text = (txt + "\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]") if Casino.offer_active else txt
+	var msg := (txt + "\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]") if Casino.offer_active else txt
+	_type_bubble(msg)
 
 func _on_ear_twitch() -> void:
 	_ear_twitch = 0.45
@@ -68,6 +82,8 @@ func _on_casino_offer_changed(active: bool) -> void:
 	var border := FoxTheme.ACID if active else Color("#c0392b")
 	bubble.add_theme_stylebox_override("panel", FoxTheme.panel_style(border, Color(0.04, 0.005, 0.012, 0.95), 2))
 	if not active:
+		_tw_full = _tw_full.replace("\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]", "")
+		_tw_pos = mini(_tw_pos, _tw_full.length())
 		bubble_lbl.text = bubble_lbl.text.replace("\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]", "")
 
 # Реакция на клик игрока по кнопке (вызывается из main.gd)
@@ -87,7 +103,59 @@ func _gui_input(event: InputEvent) -> void:
 			return
 		Fox.on_poke()
 
+# ---------------------------------------------------------------- ЭВОЛЮЦИЯ ТИРА
+
+func evolve(to_tier: int) -> void:
+	# Идемпотентно: повторный вызов с тем же тиром ничего не делает.
+	if to_tier == _current_tier:
+		return
+	var rising: bool = to_tier > _current_tier
+	_current_tier = to_tier
+	_wake = 1.0
+	_hop = 1.0
+	if _tier_tween != null and _tier_tween.is_valid():
+		_tier_tween.kill()
+	pivot_offset = size * 0.5
+	_tier_tween = create_tween()
+	_tier_tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var peak: float = 1.36 if rising else 0.82
+	_tier_tween.tween_property(self, "scale", Vector2(peak, peak), 0.24)
+	_tier_tween.tween_property(self, "scale", Vector2.ONE, 0.42)
+	var msg := "Эволюция // ТИР %d. Метки переписаны." % to_tier
+	if Casino.offer_active:
+		msg += "\n[КЛИКНИ ПО ЛИСУ -> CASINO.EXE]"
+	_type_bubble(msg)
+
+# ---------------------------------------------------------------- ПЕЧАТНАЯ МАШИНКА (облачко)
+
+func _type_bubble(text: String) -> void:
+	_tw_full = text
+	_tw_pos = 0
+	_tw_busy = true
+	bubble_lbl.text = ""
+	if _tw_timer == null:
+		_tw_timer = Timer.new()
+		_tw_timer.wait_time = 0.022
+		_tw_timer.timeout.connect(_tw_tick)
+		add_child(_tw_timer)
+	_tw_timer.start()
+
+func _tw_tick() -> void:
+	if not _tw_busy:
+		_tw_timer.stop()
+		return
+	_tw_pos += 1
+	bubble_lbl.text = _tw_full.substr(0, _tw_pos)
+	if _tw_pos >= _tw_full.length():
+		_tw_timer.stop()
+		_tw_busy = false
+
 func _process(delta: float) -> void:
+	# Автодетект смены тира (на случай, если main.gd не успел вызвать evolve).
+	var ct: int = Economy.tier_of(Economy.phase_of(GameState))
+	if ct != _current_tier:
+		evolve(ct)
+
 	_t += delta
 	bubble.visible = not Fox.muted
 	_hop = maxf(0.0, _hop - delta * 3.5)
@@ -197,6 +265,18 @@ func _draw() -> void:
 			draw_circle(ec + look, 2.3, pup)
 	if tier >= 4:
 		draw_circle(_pt(Vector2(65, 38), head_bob), 3.0, red)
+
+	# --- кибер-метки (тир 3+) ---
+	if tier >= 3:
+		var cyan: Color = Color("#00e5ff")
+		draw_line(_pt(Vector2(42, 60), head_bob), _pt(Vector2(50, 64), head_bob), cyan, 1.4)
+		draw_line(_pt(Vector2(88, 60), head_bob), _pt(Vector2(80, 64), head_bob), cyan, 1.4)
+		draw_circle(_pt(Vector2(46, 68), head_bob), 1.2, cyan)
+		draw_circle(_pt(Vector2(84, 68), head_bob), 1.2, cyan)
+	if tier >= 4:
+		# антенна-шрам на лбу
+		draw_line(_pt(Vector2(65, 38), head_bob), _pt(Vector2(65, 30), head_bob), Color("#00e5ff"), 1.6)
+		draw_circle(_pt(Vector2(65, 28), head_bob), 2.4, Color("#00e5ff"))
 
 	# носик
 	draw_colored_polygon(_poly(PackedVector2Array([Vector2(61, 63), Vector2(69, 63), Vector2(65, 68)]), head_bob), Color.WHITE)
