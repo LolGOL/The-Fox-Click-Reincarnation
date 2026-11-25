@@ -2,6 +2,8 @@ extends Node2D
 
 const DEAL_MODAL_SCENE := preload("res://scenes/deal_modal.tscn")
 const DealModal := preload("res://scripts/deal_modal.gd")
+const CASINO_MODAL_SCENE := preload("res://scenes/casino_modal.tscn")
+const CasinoModal := preload("res://scripts/casino_modal.gd")
 
 const SIGIL_TITLES: Array[String] = [
 	"SIGIL LV.1 // РЖАВАЯ КНОПКА",
@@ -64,12 +66,7 @@ var last_up_sig: String = ""
 
 # Модальные окна
 var deal_modal: DealModal
-
-var casino_overlay: ColorRect
-var casino_status_lbl: Label
-var casino_spores_lbl: Label
-var casino_catch_btn: Button
-var casino_bet: int = 1
+var casino_modal: CasinoModal
 
 var mut_overlay: ColorRect
 var mut_cards_box: VBoxContainer
@@ -123,26 +120,6 @@ func _ready() -> void:
 		vfx.spawn_floating_text(Vector2(800, 90), "UNLOCK: " + path, Color("#00e5ff"), 1.05)
 	)
 
-	Casino.spin_started.connect(func(bet: int) -> void:
-		casino_status_lbl.text = "БАРАБАН КРУТИТСЯ... (Ставка: %d спор)\nСледи за правым ухом Лиса!" % bet
-		casino_catch_btn.visible = false
-	)
-	Casino.ear_twitch.connect(func() -> void:
-		if casino_overlay.visible:
-			casino_catch_btn.visible = true
-	)
-	Casino.spin_resolved.connect(func(res: Dictionary) -> void:
-		casino_catch_btn.visible = false
-		if bool(res.get("busted", false)):
-			casino_status_lbl.text = "ШУЛЕР ПОЙМАН ЗА УХО! Выигрыш: +%d спор (×2)" % int(res["win"])
-			vfx.spawn_purchase_burst(Vector2(800, 420), "ЛИС ПОЙМАН! +%d СПОР" % int(res["win"]), true)
-		elif int(res["win"]) > 0:
-			casino_status_lbl.text = "ПОБЕДА ×%.0f! Выигрыш: +%d спор" % [float(res["mult"]), int(res["win"])]
-			vfx.spawn_purchase_burst(Vector2(800, 420), "+%d СПОР" % int(res["win"]))
-		else:
-			casino_status_lbl.text = "ПРОИГРЫШ... Лис усмехается и прячет твои %d спор." % int(res["bet"])
-	)
-
 	tick_timer = Timer.new()
 	tick_timer.wait_time = 0.1
 	tick_timer.autostart = true
@@ -165,10 +142,11 @@ func _input(event: InputEvent) -> void:
 		elif event.keycode == KEY_ESCAPE:
 			if pause_overlay.visible:
 				_set_paused(false)
-			elif debug_overlay.visible or casino_overlay.visible or logs_overlay.visible:
+			elif debug_overlay.visible or casino_modal.visible or logs_overlay.visible:
 				debug_overlay.visible = false
-				casino_overlay.visible = false
 				logs_overlay.visible = false
+				if casino_modal.visible:
+					casino_modal.close()
 			else:
 				_set_paused(true)
 			get_viewport().set_input_as_handled()
@@ -225,7 +203,7 @@ func _process(delta: float) -> void:
 		crt_mat.set_shader_parameter("flash_red", flash_red_val)
 
 func _update_drawers(delta: float) -> void:
-	var modal_busy := deal_modal.visible or debug_overlay.visible or casino_overlay.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
+	var modal_busy := deal_modal.visible or debug_overlay.visible or casino_modal.visible or mut_overlay.visible or logs_overlay.visible or pause_overlay.visible
 	var mpos := get_global_mouse_position()
 
 	var l_hover := not modal_busy and left_drawer.get_global_rect().has_point(mpos)
@@ -640,80 +618,12 @@ func _build_modals() -> void:
 	)
 
 	# 2. Окно Casino.exe (с защитой от F5 и охотой на ухо Лиса)
-	casino_overlay = ColorRect.new()
-	casino_overlay.color = Color(0.0, 0.0, 0.0, 0.78)
-	casino_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	casino_overlay.visible = false
-	modal_layer.add_child(casino_overlay)
-
-	var cas_cc := CenterContainer.new()
-	cas_cc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	casino_overlay.add_child(cas_cc)
-
-	var cas_box := PanelContainer.new()
-	cas_box.custom_minimum_size = Vector2(540, 0)
-	cas_box.add_theme_stylebox_override("panel", FoxTheme.panel_style(Color("#ff1e38"), Color("#0a0103"), 3))
-	cas_cc.add_child(cas_box)
-
-	var cas_vb := VBoxContainer.new()
-	cas_vb.add_theme_constant_override("separation", 10)
-	cas_box.add_child(cas_vb)
-
-	var cas_hdr := HBoxContainer.new()
-	cas_vb.add_child(cas_hdr)
-	var cas_t := Label.new()
-	cas_t.text = "[CASINO.EXE] РУЛЕТКА СПОР // ШУЛЕРСТВО ЛИСА"
-	cas_t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cas_t.add_theme_color_override("font_color", Color("#ff1e38"))
-	cas_hdr.add_child(cas_t)
-
-	var cas_close := Button.new()
-	cas_close.text = "ЗАКРЫТЬ"
-	_style_button(cas_close)
-	cas_close.pressed.connect(func() -> void: casino_overlay.visible = false)
-	cas_hdr.add_child(cas_close)
-
-	casino_spores_lbl = Label.new()
-	casino_spores_lbl.add_theme_color_override("font_color", Color("#39ff88"))
-	cas_vb.add_child(casino_spores_lbl)
-
-	casino_status_lbl = Label.new()
-	casino_status_lbl.text = "Выбери ставку. Если Лис решит слить тебя — его ухо дёрнется за 0.4 сек до конца!"
-	casino_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	cas_vb.add_child(casino_status_lbl)
-
-	var bet_row := HBoxContainer.new()
-	bet_row.add_theme_constant_override("separation", 8)
-	cas_vb.add_child(bet_row)
-	for b_val: int in [1, 5, 10, 25]:
-		var bb := Button.new()
-		bb.text = "Ставка: %d" % b_val
-		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_style_button(bb)
-		bb.pressed.connect(func() -> void:
-			casino_bet = b_val
-			_refresh_casino_ui()
-		)
-		bet_row.add_child(bb)
-
-	var spin_btn := Button.new()
-	spin_btn.text = "КРУТИТЬ БАРАБАН (СТАВКА СПИСЫВАЕТСЯ СРАЗУ)"
-	_style_button(spin_btn, true)
-	spin_btn.pressed.connect(func() -> void:
-		Casino.spin(casino_bet)
-		_refresh_casino_ui()
+	casino_modal = CASINO_MODAL_SCENE.instantiate() as CasinoModal
+	modal_layer.add_child(casino_modal)
+	casino_modal.spin_won.connect(func(win: int, busted: bool) -> void:
+		var burst_text := ("ЛИС ПОЙМАН! +%d СПОР" % win) if busted else ("+%d СПОР" % win)
+		vfx.spawn_purchase_burst(Vector2(800, 420), burst_text, busted)
 	)
-	cas_vb.add_child(spin_btn)
-
-	casino_catch_btn = Button.new()
-	casino_catch_btn.text = "!!! УХО ДЁРНУЛОСЬ — ПОЙМАТЬ ЛИСА ЗА ХВОСТ !!!"
-	casino_catch_btn.visible = false
-	_style_button(casino_catch_btn, true)
-	casino_catch_btn.pressed.connect(func() -> void:
-		Casino.on_fox_ear_clicked()
-		_refresh_casino_ui()
-	)
-	cas_vb.add_child(casino_catch_btn)
 
 	# 3. Окно выбора Мутаций мицелия (1 из 3)
 	mut_overlay = ColorRect.new()
@@ -897,11 +807,6 @@ func _build_modals() -> void:
 	)
 	chaos_row.add_child(clr_fx)
 
-func _refresh_casino_ui() -> void:
-	casino_spores_lbl.text = "Твои споры: %d  |  Выбранная ставка: %d  |  Улик поймано: %d" % [
-		GameState.spores, casino_bet, Casino.clues
-	]
-
 func _open_mutations_modal(options: Array[String]) -> void:
 	for ch in mut_cards_box.get_children():
 		ch.queue_free()
@@ -1084,9 +989,6 @@ func _refresh_ui() -> void:
 	spore_btn.disabled = GameState.infection >= 100 or not GameState.coins.gte(next_myc)
 	purify_btn.text = "БЛОК" if float(GameState.fx.get("purLock", 0.0)) > 0.0 else "Очистить (-50%)"
 	purify_btn.disabled = GameState.infection <= 0 or float(GameState.fx.get("purLock", 0.0)) > 0.0
-
-	if casino_overlay.visible:
-		_refresh_casino_ui()
 
 # ---------------------------------------------------------------- ПАУЗА / ВЫХОД В МЕНЮ
 

@@ -1,0 +1,100 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/casino_modal.gd" id="1_casino"]
+
+[node name="CasinoModal" type="ColorRect"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.78)
+script = ExtResource("1_casino")
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="CenterContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(540, 0)
+layout_mode = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="CenterContainer/PanelContainer"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="HeaderRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "[CASINO.EXE] РУЛЕТКА СПОР // ШУЛЕРСТВО ЛИСА"
+autowrap_mode = 3
+
+[node name="CloseButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/HeaderRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ЗАКРЫТЬ"
+
+[node name="SporesLabel" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="StatusLabel" type="Label" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Выбери ставку. Если Лис решит слить тебя — его ухо дёрнется за 0.4 сек до конца!"
+autowrap_mode = 3
+
+[node name="BetRow" type="HBoxContainer" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Bet1Button" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ставка: 1"
+
+[node name="Bet5Button" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ставка: 5"
+
+[node name="Bet10Button" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ставка: 10"
+
+[node name="Bet25Button" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer/BetRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ставка: 25"
+
+[node name="SpinButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "КРУТИТЬ БАРАБАН (СТАВКА СПИСЫВАЕТСЯ СРАЗУ)"
+
+[node name="CatchButton" type="Button" parent="CenterContainer/PanelContainer/MarginContainer/VBoxContainer"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "!!! УХО ДЁРНУЛОСЬ — ПОЙМАТЬ ЛИСА ЗА ХВОСТ !!!"
